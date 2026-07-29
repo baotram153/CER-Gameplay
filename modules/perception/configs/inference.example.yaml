@@ -1,0 +1,19 @@
+# Inference-time configuration.
+
+model:
+  # Fine-tuned checkpoint, used if present.
+  weights: models/best.pt
+  # Falls back to the stock Ultralytics checkpoint (auto-downloaded) if
+  # `weights` doesn't exist yet, so the pipeline is runnable before any
+  # fine-tuning has happened.
+  fallback_weights: yolo26n.pt
+  conf_threshold: 0.4
+  iou_threshold: 0.5
+  # null = let Ultralytics auto-select (GPU if available, else CPU).
+  device: null
+
+class_names:
+  0: mandarin_piece
+  1: ordinary_piece
+
+board_config: configs/board.yaml

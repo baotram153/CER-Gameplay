@@ -1,0 +1,15 @@
+[project]
+name = "robot-controller"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+    "modules/perception",
+    "modules/game_engine",
+    "modules/manipulation",
+    "modules/common",
+]

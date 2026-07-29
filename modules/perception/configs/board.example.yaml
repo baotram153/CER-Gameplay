@@ -1,0 +1,48 @@
+# Board rectification + cell-layout configuration.
+#
+# PLACEHOLDER: the ArUco marker IDs and the cell layout below must be
+# recalibrated against your physical board and camera rig.
+
+aruco:
+  dictionary: DICT_4X4_50
+  # Marker ID placed at each physical corner of the board.
+  corner_marker_ids:
+    top_left: 1
+    top_right: 4
+    bottom_right: 2
+    bottom_left: 0
+
+rectification:
+  # [width, height] in pixels of the warped, board-cut, top-down output image.
+  output_size: [1000, 300]
+
+# Cell layout in the rectified image, as normalized [x, y] centers in [0, 1].
+# PLACEHOLDER: standard Ô Ăn Quan layout — 2 rows of 5 "dân" cells flanked by
+# 2 "quan" cells at each end. Pieces of either type can end up in any cell
+# during play, so this only defines cell *positions*, not which piece type
+# belongs there.
+cells:
+  - id: mandarin_left
+    center: [0.12, 0.5]
+  - id: ordinary_above_1
+    center: [0.27, 0.25]
+  - id: ordinary_above_2
+    center: [0.385, 0.25]
+  - id: ordinary_above_3
+    center: [0.5, 0.25]
+  - id: ordinary_above_4
+    center: [0.615, 0.25]
+  - id: ordinary_above_5
+    center: [0.73, 0.25]
+  - id: ordinary_below_1
+    center: [0.27, 0.75]
+  - id: ordinary_below_2
+    center: [0.385, 0.75]
+  - id: ordinary_below_3
+    center: [0.5, 0.75]
+  - id: ordinary_below_4
+    center: [0.615, 0.75]
+  - id: ordinary_below_5
+    center: [0.73, 0.75]
+  - id: mandarin_right
+    center: [0.88, 0.5]

@@ -1,0 +1,10 @@
+# Ultralytics dataset spec for fine-tuning the piece detector.
+# `path` is resolved relative to this file's location.
+
+path: ../data/dataset
+train: images/train
+val: images/val
+
+names:
+  0: mandarin_piece
+  1: ordinary_piece

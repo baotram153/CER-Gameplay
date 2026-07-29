@@ -1,0 +1,31 @@
+# outputs and logs
+outputs/*
+*.cache
+configs/*
+!configs/*.example.yaml
+
+# Data & model artifacts (kept out of git; large / device-specific)
+data/raw/*
+!data/raw/.gitkeep
+data/rectified/*
+!data/rectified/.gitkeep
+data/dataset/images/train/*
+!data/dataset/images/train/.gitkeep
+data/dataset/images/val/*
+!data/dataset/images/val/.gitkeep
+data/dataset/labels/train/*
+!data/dataset/labels/train/.gitkeep
+data/dataset/labels/val/*
+!data/dataset/labels/val/.gitkeep
+
+models/*
+!models/.gitkeep
+*.pt
+*.onnx
+
+runs/
+*.log
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
