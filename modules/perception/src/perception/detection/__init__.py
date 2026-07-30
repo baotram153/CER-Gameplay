@@ -1,4 +1,4 @@
-"""Piece detection (YOLO26n)."""
-from .detector import Detection, PieceDetector
+"""Object detection (YOLO26n)."""
+from .detector import Detection, ObjectDetector
 
-__all__ = ["Detection", "PieceDetector"]
+__all__ = ["Detection", "ObjectDetector"]

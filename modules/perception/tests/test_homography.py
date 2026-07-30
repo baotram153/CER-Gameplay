@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import pytest
 
-from oaq_state_detection.rectification.homography import compute_homography, warp
+from perception.rectification.homography import compute_homography, warp
 
 
 def test_compute_homography_maps_corners_to_rectangle():

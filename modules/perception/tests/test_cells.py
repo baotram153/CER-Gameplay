@@ -1,5 +1,5 @@
-from oaq_state_detection.counting.cells import Cell, assign_to_nearest_cell, count_per_cell
-from oaq_state_detection.detection.detector import Detection
+from perception.detection.detector import Detection
+from perception.oaq.counting.cells import Cell, assign_to_nearest_cell, count_per_cell
 
 
 def test_assign_and_count():

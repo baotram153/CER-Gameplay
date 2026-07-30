@@ -10,7 +10,7 @@ from pathlib import Path
 import cv2
 import yaml
 
-from modules.perception.src.perception.rectification import rectify_image
+from ..rectification import rectify_image
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 

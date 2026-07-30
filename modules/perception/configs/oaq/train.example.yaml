@@ -1,7 +1,7 @@
 # Fine-tuning configuration for the piece detector.
 
 model: yolo26n.pt
-data: configs/dataset.yaml
+data: dataset.yaml
 epochs: 1000
 imgsz: 960
 batch: 4

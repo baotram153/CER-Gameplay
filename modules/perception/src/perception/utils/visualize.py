@@ -1,11 +1,10 @@
-"""Debug visualization: draw detections and cell centers on an image."""
+"""Debug visualization: draw detected objects on an image."""
 from __future__ import annotations
 
 import cv2
 import numpy as np
 
-from modules.perception.src.perception.counting.cells import Cell
-from modules.perception.src.perception.detection.detector import Detection
+from ..detection.detector import Detection
 
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -53,13 +52,4 @@ def draw_detections(
         origin, rect = _place_label(label, x1, y1, occupied)
         occupied.append(rect)
         cv2.putText(canvas, label, origin, FONT, FONT_SCALE, (0, 255, 0), FONT_THICKNESS)
-    return canvas
-
-
-def draw_cells(image: np.ndarray, cells: list[Cell]) -> np.ndarray:
-    canvas = image.copy()
-    for cell in cells:
-        center = (int(cell.center[0]), int(cell.center[1]))
-        cv2.drawMarker(canvas, center, (0, 0, 255), cv2.MARKER_CROSS, 12, 2)
-        cv2.putText(canvas, cell.id, center, cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
     return canvas

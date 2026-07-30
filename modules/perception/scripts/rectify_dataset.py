@@ -1,14 +1,18 @@
-"""CLI: batch-rectify raw images so they're ready for labeling."""
+"""CLI: batch-rectify raw images so they're ready for labeling.
+
+Game-agnostic: pass whichever board config matches the images you're
+rectifying, e.g. configs/oaq/board.yaml or configs/ludo/board.yaml.
+"""
 from __future__ import annotations
 
 import argparse
 
-from oaq_state_detection.training.prepare_dataset import rectify_dataset
+from perception.training.prepare_dataset import rectify_dataset
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", default="configs/board.yaml", help="Path to board config")
+    parser.add_argument("--config", required=True, help="Path to a board config")
     parser.add_argument("--input", default="data/raw", help="Directory of raw images")
     parser.add_argument(
         "--output", default="data/rectified", help="Output directory for rectified images"

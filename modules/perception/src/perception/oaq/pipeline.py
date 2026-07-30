@@ -7,10 +7,11 @@ import cv2
 import numpy as np
 import yaml
 
-from modules.perception.src.perception.counting import assign_to_nearest_cell, count_per_cell, load_cells
-from modules.perception.src.perception.detection import PieceDetector
-from modules.perception.src.perception.rectification import rectify_image
-from modules.perception.src.perception.utils.visualize import draw_cells, draw_detections
+from ..detection import ObjectDetector
+from ..rectification import rectify_image
+from ..utils.visualize import draw_detections
+from .counting import assign_to_nearest_cell, count_per_cell, load_cells
+from .visualize import draw_cells
 
 
 class BoardStatePipeline:
@@ -19,7 +20,7 @@ class BoardStatePipeline:
         self.board_config = yaml.safe_load(board_config_path.read_text())
 
         model_cfg = inference_config["model"]
-        self.detector = PieceDetector(
+        self.detector = ObjectDetector(
             weights=model_cfg["weights"],
             fallback_weights=model_cfg["fallback_weights"],
             conf_threshold=model_cfg["conf_threshold"],

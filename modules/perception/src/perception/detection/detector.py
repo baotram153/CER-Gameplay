@@ -1,4 +1,4 @@
-"""Thin wrapper around an Ultralytics YOLO model for piece detection."""
+"""Thin wrapper around an Ultralytics YOLO model for object detection."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,21 +17,29 @@ class Detection:
     confidence: float
 
 
-class PieceDetector:
-    """Detects board pieces (ordinary/mandarin) in a rectified image."""
+class ObjectDetector:
+    """Detects objects (board pieces, dice, ...) in a rectified image, per
+    whichever fine-tuned YOLO26n weights + class map it's constructed with."""
 
     def __init__(
         self,
         weights: str | Path,
-        fallback_weights: str = "yolo26n.pt",
+        fallback_weights: str | None = "yolo26n.pt",
         conf_threshold: float = 0.4,
         iou_threshold: float = 0.5,
         device: str | None = None,
     ) -> None:
         weights_path = Path(weights)
-        # Falls back to the stock checkpoint so inference is runnable before
-        # any fine-tuning has produced `weights`.
-        model_source = str(weights_path) if weights_path.exists() else fallback_weights
+        # if no fallback weights are provided, raise erro if the path to weights does not exist
+        if weights_path.exists():
+            model_source = str(weights_path)
+        elif fallback_weights is not None:
+            model_source = fallback_weights
+        else:
+            raise FileNotFoundError(
+                f"No checkpoint at {weights_path} and fallback_weights is null; "
+                "fine-tune a checkpoint or set a fallback_weights value."
+            )
         self.model = YOLO(model_source)
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold

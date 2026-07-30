@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from modules.perception.src.perception.detection.detector import Detection
+from ...detection.detector import Detection
 
 
 @dataclass

@@ -150,7 +150,7 @@ def _make_val_visualization_callback(model_source: str, val_images: list[Path], 
 def train(config_path: str | Path) -> None:
     config_path = Path(config_path).resolve()
     config = yaml.safe_load(config_path.read_text())
-    dataset, dataset_root = _load_dataset(config["data"], config_path.parent.parent)
+    dataset, dataset_root = _load_dataset(config["data"], config_path.parent)
     _validate_dataset(dataset, dataset_root)
 
     train_args = dict(
