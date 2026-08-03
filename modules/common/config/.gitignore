@@ -1,0 +1,4 @@
+# Real, device-specific board calibration is local-only; the .example
+# template is what's checked in and copied/edited per physical board.
+oaq/board.yaml
+!oaq/board.example.yaml

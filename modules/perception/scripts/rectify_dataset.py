@@ -1,7 +1,7 @@
 """CLI: batch-rectify raw images so they're ready for labeling.
 
 Game-agnostic: pass whichever board config matches the images you're
-rectifying, e.g. configs/oaq/board.yaml or configs/ludo/board.yaml.
+rectifying, e.g. ../common/config/oaq/board.yaml or ../common/config/ludo/board.yaml.
 """
 from __future__ import annotations
 

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from .constants import CellKind, Color
+from .rules import HOME_ENTRY, HOME_STRETCH_MAX, HOME_STRETCH_MIN, YARD
 
 @dataclass
 class Piece:
@@ -10,8 +11,8 @@ class Piece:
     def __post_init__(self):
         if not isinstance(self.color, Color):
             raise TypeError(f"color must be a Color enum, got {type(self.color)}")
-        if not (0 <= self.pos <= 62):
-            raise ValueError(f"pos must be in range [0, 62], got {self.pos}")
+        if not (YARD <= self.pos <= HOME_STRETCH_MAX):
+            raise ValueError(f"pos must be in range [{YARD}, {HOME_STRETCH_MAX}], got {self.pos}")
 
 @dataclass
 class BoardState:
@@ -44,10 +45,10 @@ class Move:
     captured_piece: Piece | None = None
 
     def __post_init__(self):
-        if not (0 <= self.from_pos <= 62):
-            raise ValueError(f"from_pos must be in range [0, 62], got {self.from_pos}")
-        if not (0 <= self.to_pos <= 62):
-            raise ValueError(f"to_pos must be in range [0, 62], got {self.to_pos}")
+        if not (YARD <= self.from_pos <= HOME_STRETCH_MAX):
+            raise ValueError(f"from_pos must be in range [{YARD}, {HOME_STRETCH_MAX}], got {self.from_pos}")
+        if not (YARD <= self.to_pos <= HOME_STRETCH_MAX):
+            raise ValueError(f"to_pos must be in range [{YARD}, {HOME_STRETCH_MAX}], got {self.to_pos}")
 
 @dataclass
 class TrackCell:
@@ -88,12 +89,15 @@ class TrackCell:
                 raise ValueError(f"{self.id}: home_entry cells must have a color")
             if self.shared_step is None or self.shared_step < 0:
                 raise ValueError(f"{self.id}: home_entry cells need shared_step >= 0, got {self.shared_step}")
-            if self.home_step != 56:
-                raise ValueError(f"{self.id}: home_entry cells need home_step == 56, got {self.home_step}")
+            if self.home_step != HOME_ENTRY:
+                raise ValueError(f"{self.id}: home_entry cells need home_step == {HOME_ENTRY}, got {self.home_step}")
         elif self.kind == CellKind.HOME_STRETCH:
             if self.color is None:
                 raise ValueError(f"{self.id}: home_stretch cells must have a color")
             if self.shared_step is not None:
                 raise ValueError(f"{self.id}: home_stretch cells must not have a shared_step")
-            if self.home_step is None or not (57 <= self.home_step <= 62):
-                raise ValueError(f"{self.id}: home_stretch cells need home_step in [57, 62], got {self.home_step}")
+            if self.home_step is None or not (HOME_STRETCH_MIN <= self.home_step <= HOME_STRETCH_MAX):
+                raise ValueError(
+                    f"{self.id}: home_stretch cells need home_step in "
+                    f"[{HOME_STRETCH_MIN}, {HOME_STRETCH_MAX}], got {self.home_step}"
+                )

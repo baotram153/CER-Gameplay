@@ -1,0 +1,22 @@
+# Piece.pos encoding boundaries and core rule constants for Ludo. This is
+# the single source of truth for these numbers — common.type's validation
+# and game_engine's rule logic both load from here rather than each keeping
+# their own copy.
+#
+# Deliberately excludes board-calibration data (entry_offsets,
+# num_shared_steps): those vary per physical board and live in
+# common/config/ludo/board.yaml instead.
+
+pos:
+  yard: 0
+  track_min: 1
+  home_entry: 56
+  home_stretch_min: 57
+  home_stretch_max: 62
+
+# Winning requires one piece per cell on home-stretch cells 3-6 specifically
+# (pos 59-62); cells 1-2 (pos 57-58) are transit-only and never count toward
+# a win, per the literal ruleset.
+winning_cells: [59, 60, 61, 62]
+
+yard_entry_rolls: [1, 6]

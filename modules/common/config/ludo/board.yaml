@@ -1,0 +1,130 @@
+# Board rectification + track-layout configuration for cờ cá ngựa (Ludo).
+#
+# PLACEHOLDER: the ArUco marker IDs, cell layout, and entry offsets below must
+# be recalibrated against your physical board and camera rig.
+
+aruco:
+  dictionary: DICT_4X4_50
+  corner_marker_ids:
+    top_left: 1
+    top_right: 4
+    bottom_right: 2
+    bottom_left: 0
+
+rectification:
+  # [width, height] in pixels of the warped, board-cut, top-down output image.
+  output_size: [800, 800]
+
+track:
+  # Number of cells in the shared loop, shared by all 4 colors (includes each
+  # color's home_entry cell, which is physically just one of these loop
+  # cells). common.type.Piece.pos documents track as 1-56, so this must be 56.
+  num_shared_steps: 56
+
+# entry_offsets[color] is the shared_step of the loop cell immediately BEFORE
+# that color's own step 1 (i.e. that color's home_entry cell). Evenly spaced
+# 56 / 4 = 14 cells apart below; recalibrate against the real board.
+entry_offsets:
+  red: 0
+  green: 14
+  yellow: 28
+  blue: 42
+
+# Physical cell centers in the rectified image, normalized [0, 1] x/y.
+# kind: "track"        shared loop cell, shared_step 0..num_shared_steps-1, no color.
+#       "home_entry"    shared loop cell (shared_step set, like track) owned by one
+#                       color: landing there as that color means Piece.pos == 56.
+#       "yard"          color's 4 waiting slots, always Piece.pos == 0.
+#       "home_stretch"  color-private final approach, home_step 57..62 (6 cells).
+#
+# PLACEHOLDER: only a representative subset of the 56 track cells is filled
+# in as a shape example — a real board needs all 56 (52 plain track +
+# 4 home_entry, one per color), plus 4 yard + 6 home_stretch cells per color
+# (16 yard + 24 home_stretch total).
+cells:
+  - id: track_00
+    kind: home_entry   # red's home_entry: shared_step == entry_offsets.red
+    color: red
+    shared_step: 0
+    home_step: 56
+    center: [0.50, 0.02]
+  - id: track_01
+    kind: track
+    shared_step: 1      # red's own step 1 (shared_step - entry_offsets.red == 1)
+    center: [0.54, 0.02]
+  # ... track_02 .. track_13 (plain track cells)
+
+  - id: track_14
+    kind: home_entry   # green's home_entry
+    color: green
+    shared_step: 14
+    home_step: 56
+    center: [0.98, 0.50]
+  # ... track_15 .. track_27 (plain track cells)
+
+  - id: track_28
+    kind: home_entry   # yellow's home_entry
+    color: yellow
+    shared_step: 28
+    home_step: 56
+    center: [0.50, 0.98]
+  # ... track_29 .. track_41 (plain track cells)
+
+  - id: track_42
+    kind: home_entry   # blue's home_entry
+    color: blue
+    shared_step: 42
+    home_step: 56
+    center: [0.02, 0.50]
+  # ... track_43 .. track_55 (plain track cells)
+
+  - id: red_yard_0
+    kind: yard
+    color: red
+    center: [0.10, 0.10]
+  - id: red_yard_1
+    kind: yard
+    color: red
+    center: [0.16, 0.10]
+  - id: red_yard_2
+    kind: yard
+    color: red
+    center: [0.10, 0.16]
+  - id: red_yard_3
+    kind: yard
+    color: red
+    center: [0.16, 0.16]
+  # ... same 4-slot pattern for green_yard_*, yellow_yard_*, blue_yard_*
+
+  - id: red_home_stretch_1
+    kind: home_stretch
+    color: red
+    home_step: 57
+    center: [0.46, 0.10]
+  - id: red_home_stretch_2
+    kind: home_stretch
+    color: red
+    home_step: 58
+    center: [0.46, 0.14]
+  - id: red_home_stretch_3
+    kind: home_stretch
+    color: red
+    home_step: 59
+    center: [0.46, 0.18]
+  - id: red_home_stretch_4
+    kind: home_stretch
+    color: red
+    home_step: 60
+    center: [0.46, 0.22]
+  - id: red_home_stretch_5
+    kind: home_stretch
+    color: red
+    home_step: 61
+    center: [0.46, 0.26]
+  - id: red_home_stretch_6
+    kind: home_stretch
+    color: red
+    home_step: 62
+    center: [0.46, 0.30]
+  # ... same 6-cell pattern for green_home_stretch_*, yellow_home_stretch_*,
+  # blue_home_stretch_*, each approaching that color's own goal

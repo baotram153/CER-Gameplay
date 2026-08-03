@@ -32,16 +32,20 @@ dice bowl also has its own 4 corner ArUco markers (separate from the board's),
 so the dice area is rectified to a top-down view independently — see
 `configs/ludo/dice.yaml`.
 
+Board-layout configs (`board.yaml`) are shared with `game_engine` and live
+under `../common/config/<game>/` instead of this module's own `configs/`.
 Copy configuration files and modify them according to your board design and dataset:
 
 ```bash
 # OAQ
-for f in board dataset inference train; do cp configs/oaq/$f.yaml.example configs/oaq/$f.yaml; done
+cp ../common/config/oaq/board.example.yaml ../common/config/oaq/board.yaml
+for f in dataset inference train; do cp configs/oaq/$f.yaml.example configs/oaq/$f.yaml; done
 ```
-Ludo's configs (`configs/ludo/`) don't have `.example` counterparts yet — copy
-and edit `board.yaml`/`inference.yaml`/`board_train.yaml`/`dice_train.yaml`/
-`board_dataset.yaml`/`dice_dataset.yaml` directly; all the geometry, weights
-paths, and dice ROIs in them are placeholders.
+Ludo's configs don't have `.example` counterparts yet — copy and edit
+`../common/config/ludo/board.yaml` and (under `configs/ludo/`)
+`inference.yaml`/`board_train.yaml`/`dice_train.yaml`/`board_dataset.yaml`/
+`dice_dataset.yaml` directly; all the geometry, weights paths, and dice ROIs
+in them are placeholders.
 
 All commands below are run from this directory (`modules/perception/`).
 
@@ -61,11 +65,11 @@ uv run python scripts/run_inference.py --game ludo --image path/to/frame.jpg --c
 
 1. Drop raw camera captures in `data/raw/`.
 2. Rectify them in bulk (works for any board/bowl — pass the matching config,
-   e.g. `configs/oaq/board.yaml`, `configs/ludo/board.yaml`, or
-   `configs/ludo/dice.yaml` for dice-bowl captures):
+   e.g. `../common/config/oaq/board.yaml`, `../common/config/ludo/board.yaml`,
+   or `configs/ludo/dice.yaml` for dice-bowl captures):
 
    ```bash
-   uv run python scripts/rectify_dataset.py --config configs/oaq/board.yaml --input data/raw --output data/rectified
+   uv run python scripts/rectify_dataset.py --config ../common/config/oaq/board.yaml --input data/raw --output data/rectified
    ```
 3. Label the rectified images with YOLO-format boxes, using the classes
    defined in the matching `*_dataset.yaml`:
@@ -111,6 +115,7 @@ uv run python -m perception.training.export --weights runs/detect/<name>/weights
 
 ## Calibration note
 
-Recalibrate `cells:`/`entry_offsets:`/`aruco:` in each `board.yaml`, and
+Recalibrate `cells:`/`entry_offsets:`/`aruco:` in each game's `board.yaml`
+(under `../common/config/<game>/`, shared with `game_engine`), and
 `aruco:`/`rectification:` in Ludo's `dice.yaml`, against your actual rectified
 images — everything checked in is placeholder geometry.
