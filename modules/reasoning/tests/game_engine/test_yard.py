@@ -1,10 +1,10 @@
 from common.constants import Color
 from common.type import BoardState, Piece
-from game_engine.topology import from_shared_step, to_shared_step
-from game_engine.yard import yard_entry_move
+from reasoning.game_engine.topology import from_shared_step, to_shared_step
+from reasoning.game_engine.yard import yard_entry_move
 
-ENTRY_OFFSETS = {Color.RED: 0, Color.GREEN: 14, Color.YELLOW: 28, Color.BLUE: 42}
-NUM_SHARED_STEPS = 56
+ENTRY_OFFSETS = {Color.RED: 0, Color.GREEN: 15, Color.YELLOW: 30, Color.BLUE: 45}
+NUM_SHARED_STEPS = 60
 
 
 def _board(overrides: dict[Color, list[int]], turn: Color = Color.RED) -> BoardState:

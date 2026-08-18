@@ -1,6 +1,6 @@
 from common.constants import Color
 from common.type import BoardState, Move, Piece
-from game_engine.apply import apply_move
+from reasoning.game_engine.apply import apply_move
 
 
 def _board(overrides: dict[Color, list[int]], turn: Color = Color.RED) -> BoardState:

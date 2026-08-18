@@ -2,10 +2,10 @@ import pytest
 
 from common.constants import Color
 from common.type import BoardState, Move, Piece
-from game_engine.state import GameState
+from reasoning.game_engine.state import GameState
 
-ENTRY_OFFSETS = {Color.RED: 0, Color.GREEN: 14, Color.YELLOW: 28, Color.BLUE: 42}
-NUM_SHARED_STEPS = 56
+ENTRY_OFFSETS = {Color.RED: 0, Color.GREEN: 15, Color.YELLOW: 30, Color.BLUE: 45}
+NUM_SHARED_STEPS = 60
 PLAYERS = [Color.RED, Color.GREEN]
 
 
@@ -35,7 +35,7 @@ def test_die_six_grants_extra_turn_after_a_move():
 def test_die_six_grants_extra_turn_even_on_skip():
     # All 4 red pieces already active and every one overshoots on a 6 ->
     # no legal moves at all, yet the extra turn still applies.
-    board = _board({Color.RED: [51, 52, 53, 54]})
+    board = _board({Color.RED: [55, 56, 57, 58]})
     game = GameState(PLAYERS, board, ENTRY_OFFSETS, NUM_SHARED_STEPS)
     assert game.legal_moves(6) == []
     result = game.play_turn(6)
@@ -63,10 +63,10 @@ def test_skipped_turn_still_advances_when_not_a_six():
 
 
 def test_winning_move_records_winner_and_removes_from_rotation():
-    board = _board({Color.RED: [59, 60, 61, 56]})
+    board = _board({Color.RED: [63, 64, 65, 60]})
     game = GameState(PLAYERS, board, ENTRY_OFFSETS, NUM_SHARED_STEPS)
     moves = game.legal_moves(6)
-    winning_move = next(m for m in moves if m.from_pos == 56 and m.to_pos == 62)
+    winning_move = next(m for m in moves if m.from_pos == 60 and m.to_pos == 66)
     result = game.play_turn(6, winning_move)
     assert result.winner == Color.RED
     assert Color.RED in game.winners

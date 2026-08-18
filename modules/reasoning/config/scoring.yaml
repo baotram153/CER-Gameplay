@@ -1,0 +1,30 @@
+# Single source of truth for action_planner's heuristic scoring weights and
+# per-term shape parameters. Every scoring function reads from the loaded
+# ScoringConfig (see reasoning.action_planner.config) — no term hardcodes its
+# own defaults, so retuning the heuristic only ever means editing this file.
+
+weights:
+  w_p: 1.0
+  w_h: 1.0
+  w_c: 1.0
+  w_e: 1.0
+  w_r: 1.0
+
+progress:
+  alpha: 1.0
+  beta: 1.0
+
+home_stretch:
+  alpha: 1.0
+
+capture:
+  alpha: 1.0
+  beta: 1.0
+
+entry:
+  alpha: 1.0
+  beta: 1.0
+
+risk:
+  alpha: 1.0
+  beta: 1.0

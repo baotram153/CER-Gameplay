@@ -9,7 +9,7 @@ dependencies = []
 [tool.uv.workspace]
 members = [
     "modules/perception",
-    "modules/game_engine",
+    "modules/reasoning",
     "modules/manipulation",
     "modules/common",
 ]

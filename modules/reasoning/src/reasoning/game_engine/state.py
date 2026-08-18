@@ -12,9 +12,7 @@ from .models import TurnResult
 from .moves import legal_moves as _legal_moves
 from .win import has_player_won
 
-# BoardState.dice validates to [2, 12] (a two-dice-sum encoding this
-# single-d6 engine doesn't use) — an arbitrary in-range placeholder is
-# needed before any roll has occurred.
+# An arbitrary in-range placeholder, needed before any roll has occurred.
 _PLACEHOLDER_DICE = 2
 
 

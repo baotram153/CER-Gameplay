@@ -1,13 +1,16 @@
 [project]
-name = "game-engine"
+name = "reasoning"
 version = "0.1.0"
-description = "Add your description here"
+description = "Game-rules engine and heuristic action planning for board games."
 readme = "README.md"
 authors = [
     { name = "baotram153", email = "tramdang7907129@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = ["common"]
+dependencies = [
+    "common",
+    "pyyaml>=6.0",
+]
 
 [tool.uv.sources]
 common = { workspace = true }

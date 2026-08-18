@@ -24,8 +24,8 @@ from common.rules import (
 
 # The shared loop has exactly HOME_ENTRY cells (steps 1..HOME_ENTRY, i.e.
 # shared_step 0..HOME_ENTRY-1) — this is the same fact as "home_entry is
-# step 56", not independent calibration data, so it's derived rather than
-# configured.
+# step HOME_ENTRY", not independent calibration data, so it's derived
+# rather than configured.
 NUM_SHARED_STEPS = HOME_ENTRY
 
 __all__ = [
