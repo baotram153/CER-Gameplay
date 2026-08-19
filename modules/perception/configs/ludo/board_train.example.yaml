@@ -1,0 +1,13 @@
+# Fine-tuning configuration for the Ludo pawn detector.
+
+model: yolo26n.pt
+data: board_dataset.yaml
+epochs: 1000
+imgsz: 960
+batch: 4
+patience: 150
+project: runs/detect
+name: ludo_board_yolo26n
+seed: 0
+workers: 4
+val_viz_every_steps: 100

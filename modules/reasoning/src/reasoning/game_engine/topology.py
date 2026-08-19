@@ -19,7 +19,8 @@ def to_shared_step(pos: int, color: Color, entry_offsets: dict[Color, int], num_
     None if `pos` is off the shared loop (yard, or private home_stretch cells)."""
     if not (TRACK_MIN <= pos <= HOME_ENTRY):
         return None
-    return (pos + entry_offsets[color]) % num_shared_steps
+    raw = (pos + entry_offsets[color]) % num_shared_steps
+    return raw if raw != 0 else num_shared_steps
 
 
 def from_shared_step(shared_step: int, color: Color, entry_offsets: dict[Color, int], num_shared_steps: int) -> int:

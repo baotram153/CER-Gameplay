@@ -5,12 +5,10 @@
 
 aruco:
   dictionary: DICT_4X4_50
-  # Marker ID placed at each physical corner of the board.
-  corner_marker_ids:
-    top_left: 1
-    top_right: 4
-    bottom_right: 2
-    bottom_left: 0
+  # The 4 marker IDs placed at the board's corners. Order doesn't matter —
+  # each marker's corner role (top-left, etc.) is inferred from its position
+  # in the raw image, not from this list's order.
+  corner_marker_ids: [1, 4, 2, 0]
 
 rectification:
   # [width, height] in pixels of the warped, board-cut, top-down output image.

@@ -15,6 +15,9 @@ class Detection:
     center: tuple[float, float]
     class_id: int
     confidence: float
+    # (x, y, visibility) per keypoint, in pixels; None for box-only models.
+    # for ludo: [center, head, visibility]
+    keypoints: list[tuple[float, float, float]] | None = None
 
 
 class ObjectDetector:
@@ -56,16 +59,21 @@ class ObjectDetector:
 
         boxes = results.boxes
         keep = batched_nms(boxes.xyxy, boxes.conf, boxes.cls, self.iou_threshold)   # Ultralytics skips IoU-based suppression internally for yolo26n -> redo it here
+        keypoints = results.keypoints
 
         detections = []
         for idx in keep.tolist():
             x1, y1, x2, y2 = boxes.xyxy[idx].tolist()
+            kpts = None
+            if keypoints is not None:
+                kpts = [(float(x), float(y), float(conf)) for x, y, conf in keypoints.data[idx].tolist()]
             detections.append(
                 Detection(
                     bbox=(x1, y1, x2, y2),
                     center=((x1 + x2) / 2, (y1 + y2) / 2),
                     class_id=int(boxes.cls[idx]),
                     confidence=float(boxes.conf[idx]),
+                    keypoints=kpts,
                 )
             )
         return detections

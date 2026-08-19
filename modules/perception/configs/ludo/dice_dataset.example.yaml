@@ -1,0 +1,14 @@
+# Ultralytics dataset spec for fine-tuning the dice-face detector.
+# `path` is resolved relative to this file's location.
+
+path: ../../data/ludo_dice_dataset
+train: images/train
+val: images/val
+
+names:
+  0: pip_1
+  1: pip_2
+  2: pip_3
+  3: pip_4
+  4: pip_5
+  5: pip_6

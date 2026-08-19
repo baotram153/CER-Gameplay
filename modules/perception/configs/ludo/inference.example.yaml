@@ -1,0 +1,38 @@
+# Inference-time configuration for cờ cá ngựa (Ludo).
+#
+# One combined YOLO26-pose checkpoint (modules/perception/models/best.pt)
+# detects both pawns and the die in a single pass — box + center/head
+# keypoints per detection, kpt_shape [2, 3]. Trained via Auto-Labeling's
+# configs/yolo26l-pose-2kpt.yaml (a sibling repo, not part of this one).
+# The dice bowl sits next to the board in the same raw frame with no corner
+# markers of its own, so rectification keeps the *entire* frame in view
+# (perception.rectification.rectify_keep_frame) instead of a separate
+# dice-bowl rectification.
+
+model:
+  weights: models/best.pt
+  # No stock-checkpoint fallback: distinguishing pawn colors and dice faces
+  # needs the fine-tuned model, so silently running on generic COCO classes
+  # would just produce garbage detections. ObjectDetector raises
+  # FileNotFoundError instead if `weights` doesn't exist yet.
+  fallback_weights: null
+  conf_threshold: 0.4
+  iou_threshold: 0.5
+  # null = let Ultralytics auto-select (GPU if available, else CPU).
+  device: null
+  # Detector class id -> "piece_<color>" | "dice_<1-6>", exactly as baked
+  # into the checkpoint at training time (see Auto-Labeling's
+  # configs/autolabel.yaml, which these class names were generated from).
+  class_names:
+    0: piece_red
+    1: piece_green
+    2: piece_yellow
+    3: piece_blue
+    4: dice_1
+    5: dice_2
+    6: dice_3
+    7: dice_4
+    8: dice_5
+    9: dice_6
+
+board_config: ../common/configs/ludo/board.yaml

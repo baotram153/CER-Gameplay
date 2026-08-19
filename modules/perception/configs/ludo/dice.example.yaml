@@ -1,0 +1,19 @@
+# Dice-bowl rectification configuration for cờ cá ngựa (Ludo).
+#
+# The dice-rolling bowl has its own 4 ArUco markers (separate from the
+# board's corner markers) so the two dice can be rectified to a top-down
+# view independently of the board. Same config shape as board.yaml's
+# `aruco`/`rectification` sections, reusing perception.rectification.rectify_image.
+#
+# PLACEHOLDER: marker IDs and output_size must be recalibrated against your
+# physical dice bowl and camera rig.
+
+aruco:
+  dictionary: DICT_4X4_50
+  # Order doesn't matter — each marker's corner role is inferred from its
+  # position in the raw image, not from this list's order.
+  corner_marker_ids: [10, 11, 12, 13]
+
+rectification:
+  # [width, height] in pixels of the warped, bowl-cut, top-down output image.
+  output_size: [400, 400]

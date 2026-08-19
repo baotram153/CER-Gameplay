@@ -1,0 +1,2 @@
+**/configs/**/*.yaml
+!**/configs/**/*.example.yaml

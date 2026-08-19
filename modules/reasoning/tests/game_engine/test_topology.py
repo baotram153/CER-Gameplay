@@ -2,7 +2,7 @@ from common.constants import Color
 from common.type import BoardState, Piece
 from reasoning.game_engine.topology import from_shared_step, shared_occupant, to_shared_step
 
-ENTRY_OFFSETS = {Color.RED: 0, Color.GREEN: 15, Color.YELLOW: 30, Color.BLUE: 45}
+ENTRY_OFFSETS = {Color.RED: 1, Color.GREEN: 16, Color.YELLOW: 31, Color.BLUE: 46}
 NUM_SHARED_STEPS = 60
 
 
@@ -17,11 +17,11 @@ def _board(overrides: dict[Color, list[int]], turn: Color = Color.RED) -> BoardS
 
 
 def test_to_shared_step_matches_board_config_home_entries():
-    assert to_shared_step(60, Color.RED, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 0
-    assert to_shared_step(60, Color.GREEN, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 15
-    assert to_shared_step(60, Color.YELLOW, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 30
-    assert to_shared_step(60, Color.BLUE, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 45
-    assert to_shared_step(1, Color.RED, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 1
+    assert to_shared_step(60, Color.RED, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 1
+    assert to_shared_step(60, Color.GREEN, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 16
+    assert to_shared_step(60, Color.YELLOW, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 31
+    assert to_shared_step(60, Color.BLUE, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 46
+    assert to_shared_step(1, Color.RED, ENTRY_OFFSETS, NUM_SHARED_STEPS) == 2
 
 
 def test_to_shared_step_none_off_shared_loop():

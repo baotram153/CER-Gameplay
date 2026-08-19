@@ -1,4 +1,5 @@
-"""Ludo pos-boundary/rule constants, loaded once from `ludo.yaml`.
+"""Ludo pos-boundary/rule constants, loaded once from
+`common/configs/ludo/rules.yaml`.
 
 See that file's own header for why these live in a shared config rather than
 as Python literals scattered across common.type's validation and
@@ -10,7 +11,8 @@ from pathlib import Path
 
 import yaml
 
-_DATA = yaml.safe_load((Path(__file__).parent / "ludo.yaml").read_text())
+_RULES_PATH = Path(__file__).resolve().parents[3] / "configs" / "ludo" / "rules.yaml"
+_DATA = yaml.safe_load(_RULES_PATH.read_text())
 
 YARD: int = _DATA["pos"]["yard"]
 TRACK_MIN: int = _DATA["pos"]["track_min"]

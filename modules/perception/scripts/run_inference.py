@@ -23,8 +23,9 @@ def main() -> None:
     parser.add_argument(
         "--visualize-dir",
         default=None,
-        help="OAQ only: if set, save the rectified image and a boxes-drawn copy under this "
-        "directory (in rectified/ and boxes/ subfolders), named after --image.",
+        help="If set, save the rectified image and a boxes-drawn copy under this directory "
+        "(in rectified/ and boxes/ subfolders, named after --image), plus - for --game ludo - "
+        "a structured state JSON under a states/ subfolder.",
     )
     args = parser.parse_args()
 
@@ -49,7 +50,14 @@ def main() -> None:
         from perception.ludo import LudoStatePipeline
 
         pipeline = LudoStatePipeline.from_config_file(args.config)
-        result = asdict(pipeline.run(image, turn=Color(args.turn)))
+        result = asdict(
+            pipeline.run(
+                image,
+                turn=Color(args.turn),
+                visualize_dir=args.visualize_dir,
+                image_name=Path(args.image).name if args.visualize_dir else None,
+            )
+        )
 
     print(json.dumps(result, indent=2))
 

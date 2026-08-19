@@ -3,7 +3,7 @@ from common.type import BoardState, Piece
 from reasoning.game_engine.topology import from_shared_step, to_shared_step
 from reasoning.game_engine.yard import yard_entry_move
 
-ENTRY_OFFSETS = {Color.RED: 0, Color.GREEN: 15, Color.YELLOW: 30, Color.BLUE: 45}
+ENTRY_OFFSETS = {Color.RED: 1, Color.GREEN: 16, Color.YELLOW: 31, Color.BLUE: 46}
 NUM_SHARED_STEPS = 60
 
 

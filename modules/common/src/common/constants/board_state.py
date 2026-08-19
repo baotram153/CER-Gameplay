@@ -11,7 +11,7 @@ class Color(StrEnum):
 @unique
 class CellKind(StrEnum):
     """Kind of a physical board cell, matching Piece.pos encoding
-    (yard: 0, track: 1-56, home_entry: 57, home_stretch: 58-62)."""
+    (yard: 0, track: 1-60 [60 == home_entry], home_stretch: 61-66)."""
     TRACK = "track"
     YARD = "yard"
     HOME_ENTRY = "home_entry"

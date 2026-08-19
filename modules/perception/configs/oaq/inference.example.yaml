@@ -16,4 +16,4 @@ class_names:
   0: mandarin_piece
   1: ordinary_piece
 
-board_config: ../common/config/oaq/board.yaml
+board_config: ../common/configs/oaq/board.yaml

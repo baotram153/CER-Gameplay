@@ -1,8 +1,11 @@
 # outputs and logs
 outputs/*
 *.cache
-configs/*
-!configs/*.example.yaml
+data/*
+
+# only upload config templates
+configs/**/*.yaml
+!configs/**/*.example.yaml
 
 # Data & model artifacts (kept out of git; large / device-specific)
 data/raw/*

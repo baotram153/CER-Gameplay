@@ -5,17 +5,21 @@ from common.constants import CellKind, Color
 from common.type import TrackCell
 
 
-def load_track_cells(board_config: dict, image_size: tuple[int, int]) -> list[TrackCell]:
+def load_track_cells(board_config: dict, board_rect: tuple[int, int, int, int]) -> list[TrackCell]:
     """Build TrackCell objects with pixel centers, scaling the normalized
-    [0, 1] centers in board_config to the given rectified image size."""
-    width, height = image_size
+    [0, 1] centers in board_config against the board's own region,
+    board_rect = (x_offset, y_offset, width, height)"""
+    x_offset, y_offset, width, height = board_rect
     cells = []
     for entry in board_config["cells"]:
         color = Color(entry["color"]) if entry.get("color") else None
         cells.append(
             TrackCell(
                 id=entry["id"],
-                center=(entry["center"][0] * width, entry["center"][1] * height),
+                center=(
+                    x_offset + entry["center"][0] * width,
+                    y_offset + entry["center"][1] * height,
+                ),
                 kind=CellKind(entry["kind"]),
                 color=color,
                 shared_step=entry.get("shared_step"),
@@ -39,7 +43,7 @@ def cells_for_color(cells: list[TrackCell], color: Color) -> list[TrackCell]:
 
 def cell_to_pos(cell: TrackCell, piece_color: Color, entry_offsets: dict[Color, int], num_shared_steps: int) -> int:
     """Map a physical TrackCell to this piece's `common.type.Piece.pos`
-    (0=yard, 1..56=track [56=home_entry], 57-62=home_stretch), relative to
+    (0=yard, 1..60=track [60=home_entry], 61-66=home_stretch), relative to
     `piece_color`'s own path.
 
     `entry_offsets[piece_color]` is the shared_step of the cell immediately
@@ -52,7 +56,7 @@ def cell_to_pos(cell: TrackCell, piece_color: Color, entry_offsets: dict[Color, 
         assert cell.color == piece_color, f"{cell.id} belongs to {cell.color}, not {piece_color}"
         return cell.home_step
     if cell.kind == CellKind.HOME_ENTRY and cell.color == piece_color:
-        return cell.home_step  # 56: this color's own turn-off point
+        return cell.home_step  # this color's own turn-off point
     # An ordinary shared step: either a plain TRACK cell, or another color's
     # HOME_ENTRY cell being passed through as a regular step.
     offset = entry_offsets[piece_color]

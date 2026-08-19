@@ -1,0 +1,13 @@
+# Fine-tuning configuration for the dice-face detector.
+
+model: yolo26n.pt
+data: dice_dataset.yaml
+epochs: 500
+imgsz: 640
+batch: 8
+patience: 100
+project: runs/detect
+name: ludo_dice_yolo26n
+seed: 0
+workers: 4
+val_viz_every_steps: 100

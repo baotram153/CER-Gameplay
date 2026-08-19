@@ -1,4 +1,4 @@
-"""Completeness checks for common/config/ludo/board.yaml — guards against it
+"""Completeness checks for common/configs/ludo/board.yaml — guards against it
 regressing back into an elided placeholder (only some cells filled in)."""
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 BOARD_CONFIG_PATH = (
-    Path(__file__).resolve().parents[2] / "common" / "config" / "ludo" / "board.yaml"
+    Path(__file__).resolve().parents[2] / "common" / "configs" / "ludo" / "board.yaml"
 )
 COLORS = ("red", "green", "yellow", "blue")
 
@@ -21,7 +21,7 @@ def test_all_shared_steps_present_exactly_once():
     shared_steps = sorted(
         c["shared_step"] for c in cells if c["kind"] in ("track", "home_entry")
     )
-    assert shared_steps == list(range(60))
+    assert shared_steps == list(range(1, 61))
 
 
 def test_every_color_has_a_home_entry_and_full_yard_and_home_stretch():
