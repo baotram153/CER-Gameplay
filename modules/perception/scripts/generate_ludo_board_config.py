@@ -61,12 +61,12 @@ SHARED_PER_ARM = 2 * ARM_DEPTH + 1  # entry lane + exit lane + this arm's own ho
 # Distance of the entry/exit lanes from the arm's own centerline (0.5),
 # i.e. from the home column. Measured: entry lane at 0.5-0.0499, exit lane
 # at 0.5+0.0528 (top arm); averaged into one symmetric offset.
-LANE_OFFSET = 0.05
+LANE_OFFSET = 0.0508
 # Depth-0 (outermost) cell's distance from the board edge, and the
 # per-depth step inward, both as a fraction of the board's own
 # rectification.output_size — averaged across all 3 lanes of the top arm.
-DEPTH_MARGIN = 0.095
-DEPTH_STEP = 0.0507
+DEPTH_MARGIN = 0.0975
+DEPTH_STEP = 0.0538
 
 # (color, entry_offset, coordinate mapping from (depth, lane) -> (x, y))
 # lane: 0 = entry-side shared cell, 1 = home column, 2 = exit-side shared cell.
@@ -94,11 +94,17 @@ NEXT_COLOR = {"green": "blue", "blue": "red", "red": "yellow", "yellow": "green"
 # symmetrized to a square grid: dx in {0.198, 0.298}, dy in {0.199, 0.299}
 # from the board's top-left. Mirrored for the quadrants on the opposite
 # side of the board's horizontal/vertical centerline.
+# YARD_OFFSETS = {
+#     "green": ([0.198, 0.298], [0.199, 0.299]),
+#     "yellow": ([1 - 0.298, 1 - 0.198], [0.199, 0.299]),
+#     "red": ([1 - 0.298, 1 - 0.198], [1 - 0.299, 1 - 0.199]),
+#     "blue": ([0.198, 0.298], [1 - 0.299, 1 - 0.199]),
+# }
 YARD_OFFSETS = {
-    "green": ([0.198, 0.298], [0.199, 0.299]),
-    "yellow": ([1 - 0.298, 1 - 0.198], [0.199, 0.299]),
-    "red": ([1 - 0.298, 1 - 0.198], [1 - 0.299, 1 - 0.199]),
-    "blue": ([0.198, 0.298], [1 - 0.299, 1 - 0.199]),
+    'green': ([0.1974, 0.2979], [0.1987, 0.2994]),
+    'yellow': ([0.7021, 0.8026], [0.1987, 0.2994]),
+    'red': ([0.7021, 0.8026], [0.7006, 0.8013]),
+    'blue': ([0.1974, 0.2979], [0.7006, 0.8013]),
 }
 
 
@@ -226,6 +232,12 @@ def main() -> None:
         action="store_true",
         help="Print the generated `cells:` section instead of validating counts",
     )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path(__file__).parent.parent.parent / "common/configs/ludo/cells.yaml",
+        help="Output file path for the generated `cells:` section",
+    )
     args = parser.parse_args()
 
     num_shared_steps = SHARED_PER_ARM * len(ARMS)
@@ -239,7 +251,11 @@ def main() -> None:
         assert sum(1 for c in cells if c["kind"] == "home_stretch" and c["color"] == color) == 6
     assert len(cells) == num_shared_steps + 16 + 24
 
-    print(render_cells_section(cells), end="")
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(render_cells_section(cells))
+    else:
+        print(render_cells_section(cells), end="")
 
 
 if __name__ == "__main__":
