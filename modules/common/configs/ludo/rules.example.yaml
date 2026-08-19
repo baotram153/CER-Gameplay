@@ -1,0 +1,15 @@
+# Piece.pos encoding boundaries and core rule constants for Ludo. This is
+# the single source of truth for these numbers
+
+pos:
+  yard: 0
+  track_min: 1
+  home_entry: 60
+  home_stretch_min: 61
+  home_stretch_max: 66
+
+# Winning requires one piece per cell on home-stretch cells 3-6 specifically
+# (pos 63-66)
+winning_cells: [63, 64, 65, 66]
+
+yard_entry_rolls: [1, 6]
