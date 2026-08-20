@@ -50,6 +50,14 @@ class GameState:
         return self.board.turn
 
     @property
+    def entry_offsets(self) -> dict[Color, int]:
+        return dict(self._entry_offsets)
+
+    @property
+    def num_shared_steps(self) -> int:
+        return self._num_shared_steps
+
+    @property
     def winners(self) -> list[Color]:
         return list(self._winners)
 

@@ -72,6 +72,31 @@ def test_robot_turn_with_manipulation_failure_flows_through_recovery():
     assert game.current_turn == Color.RED
 
 
+def test_default_move_selector_uses_the_action_planner_heuristic():
+    # GREEN has two candidate moves for the same die: one far from home, one
+    # right at its own door. reasoning.action_planner's progress term scores
+    # the near-home advance higher -- this is only true if GameplayEngine's
+    # default move_selector is really the heuristic, not e.g. "always the
+    # first legal move" (which would pick the from_pos=1 one instead, since
+    # legal_moves generates it first).
+    board = _board({Color.GREEN: [1, 58, 0, 0]}, turn=Color.GREEN, dice=2)
+    game = GameState(PLAYERS, board, ENTRY_OFFSETS, NUM_SHARED_STEPS)
+
+    dice_reading = _board({Color.GREEN: [1, 58, 0, 0]}, turn=Color.GREEN, dice=2)
+    after_move = _board({Color.GREEN: [1, 60, 0, 0]}, turn=Color.GREEN, dice=2)
+    perception = ScriptedPerception(script=[dice_reading, after_move])
+    manipulation = ScriptedManipulation()
+
+    engine = GameplayEngine(game, ROLES, perception, manipulation)
+    assert engine.step() == GamePhase.ROLL_DICE
+    assert engine.step() == GamePhase.WAIT_FOR_DICE
+    assert engine.step() == GamePhase.CHECK_LEGAL_MOVES
+    assert engine.step() == GamePhase.ROBOT_MOVEMENT
+    assert engine.step() == GamePhase.UPDATE_GAME_STATE
+
+    assert manipulation.executed_moves[0].from_pos == 58
+
+
 def test_run_raises_if_max_steps_exceeded():
     board = _board({}, turn=Color.RED, dice=2)
     game = GameState(PLAYERS, board, ENTRY_OFFSETS, NUM_SHARED_STEPS)

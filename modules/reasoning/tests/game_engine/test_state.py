@@ -80,6 +80,15 @@ def test_play_turn_rejects_move_outside_legal_options():
         game.play_turn(6, bogus_move)
 
 
+def test_exposes_the_board_topology_it_was_constructed_with():
+    game = GameState.new_game(PLAYERS, ENTRY_OFFSETS, NUM_SHARED_STEPS)
+    assert game.entry_offsets == ENTRY_OFFSETS
+    assert game.num_shared_steps == NUM_SHARED_STEPS
+    # A defensive copy -- mutating it must not affect the game's own state.
+    game.entry_offsets[Color.RED] = 999
+    assert game.entry_offsets[Color.RED] == ENTRY_OFFSETS[Color.RED]
+
+
 def test_init_rejects_bad_player_count_and_turn_mismatch():
     board = _board({})
     with pytest.raises(ValueError):

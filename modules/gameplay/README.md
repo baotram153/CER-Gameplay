@@ -59,10 +59,11 @@ Run the tests with `uv run pytest` from this directory.
 - **Recovery is a stub.** There's no automated corrective actuation yet —
   `handlers/recovery.py` just signals `ManipulationPort.request_human_help`
   and proceeds, trusting a human to physically fix the board.
-- **Robot move selection is a placeholder.** `reasoning.action_planner`
-  (the intended scoring engine) is unfinished, so `robot_movement` defaults
-  to `first_legal_move` via the injectable `MoveSelector` in
-  [`move_selection.py`](src/gameplay/move_selection.py).
+- **Robot move selection** defaults to `reasoning.action_planner`'s
+  heuristic scorer (Progress/Home-stretch/Capture/Entry/Risk, weighted by
+  `reasoning/config/scoring.yaml`) via `action_planner_move_selector` in
+  [`move_selection.py`](src/gameplay/move_selection.py) — pass a different
+  `MoveSelector` to `GameplayEngine` (e.g. `first_legal_move`) to override it.
 - **No retry cap** on the two self-loop phases (`WAIT_FOR_DICE`,
   `WAIT_FOR_CHILDREN_MOVEMENT`) — `GameplayContext.dice_attempts`/
   `movement_attempts` are tracked for a future caller-side timeout policy,

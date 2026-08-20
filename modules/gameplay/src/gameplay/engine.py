@@ -17,7 +17,7 @@ from reasoning.game_engine import GameState
 from . import handlers
 from .context import GameplayContext
 from .errors import GameplayError
-from .move_selection import MoveSelector, first_legal_move
+from .move_selection import MoveSelector, action_planner_move_selector
 from .phase import GamePhase
 from .player import PlayerType
 from .ports.manipulation_port import ManipulationPort
@@ -32,12 +32,18 @@ class GameplayEngine:
         player_roles: dict[Color, PlayerType],
         perception: PerceptionPort,
         manipulation: ManipulationPort,
-        move_selector: MoveSelector = first_legal_move,
+        move_selector: MoveSelector | None = None,
     ) -> None:
         self.context = GameplayContext(game=game, player_roles=player_roles)
         self._perception = perception
         self._manipulation = manipulation
-        self._move_selector = move_selector
+        # Defaults to the real reasoning.action_planner heuristic scorer,
+        # built from this game's own topology so it never has to be passed
+        # separately; pass move_selector explicitly (e.g. first_legal_move,
+        # or action_planner_move_selector(..., config=custom)) to override.
+        self._move_selector = move_selector or action_planner_move_selector(
+            game.entry_offsets, game.num_shared_steps
+        )
         self._handlers: dict[GamePhase, Callable[[], GamePhase]] = {
             GamePhase.DETERMINE_NEXT_PLAYER: lambda: handlers.determine_next_player.run(self.context),
             GamePhase.ROLL_DICE: lambda: handlers.roll_dice.run(self.context, self._manipulation),

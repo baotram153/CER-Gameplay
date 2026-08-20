@@ -7,7 +7,7 @@ from __future__ import annotations
 from .context import GameplayContext
 from .engine import GameplayEngine
 from .errors import GameplayError
-from .move_selection import MoveSelector, first_legal_move
+from .move_selection import MoveSelector, action_planner_move_selector, first_legal_move
 from .phase import GamePhase
 from .player import PlayerType
 from .ports.manipulation_port import ManipulationPort
@@ -25,4 +25,5 @@ __all__ = [
     "ManipulationPort",
     "MoveSelector",
     "first_legal_move",
+    "action_planner_move_selector",
 ]
