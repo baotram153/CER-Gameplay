@@ -26,6 +26,7 @@ formats have changed across Ultralytics versions before.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import cv2
@@ -34,6 +35,8 @@ import torch
 from torchvision.ops import batched_nms
 
 from .detector import Detection
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_QNN_PROVIDERS = ["QNNExecutionProvider", "CPUExecutionProvider"]
 
@@ -109,6 +112,28 @@ class NpuObjectDetector:
             str(weights), providers=providers, provider_options=provider_options
         )
         self.input_name = self.session.get_inputs()[0].name
+
+        # get_providers() confirms the execution provider registered, not
+        # that every node actually landed on it -- individual unsupported
+        # ops can still fall back to CPU one at a time (see
+        # scripts/check_npu_placement.py for that finer-grained check).
+        # Registration failing outright is still the main way "the NPU
+        # isn't being used" shows up in practice, so it's worth a log line
+        # right where the session is created.
+        active_providers = self.session.get_providers()
+        if "QNNExecutionProvider" in active_providers:
+            logger.info(
+                "NpuObjectDetector: Hexagon NPU (QNNExecutionProvider) is active; providers=%s",
+                active_providers,
+            )
+        else:
+            logger.warning(
+                "NpuObjectDetector: QNNExecutionProvider did not register -- falling back to "
+                "%s. The Hexagon NPU is NOT being used; check the QNN SDK install and "
+                "qnn_backend_path=%r.",
+                active_providers,
+                qnn_backend_path,
+            )
 
         self.num_classes = num_classes
         self.num_keypoints = num_keypoints
