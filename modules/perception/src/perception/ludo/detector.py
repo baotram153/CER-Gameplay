@@ -9,7 +9,7 @@ import numpy as np
 
 from common.constants import Color
 
-from ..detection import Detection, ObjectDetector
+from ..detection import Detection, NpuObjectDetector, ObjectDetector
 
 # A piece's bbox bottom edge sits closer to the board surface than the bbox
 # centroid does for an upright piece, making it the more reliable point for
@@ -40,15 +40,38 @@ class LudoDetector:
         iou_threshold: float = 0.5,
         device: str | None = None,
         class_names: dict[int, str] | None = None,  # class_id -> "piece_<color>" | "dice_<1-6>"
+        use_npu: bool = False,
+        npu_weights: str | Path | None = None,
+        num_keypoints: int = 2,
+        qnn_backend_path: str = "libQnnHtp.so",
     ) -> None:
-        self.detector = ObjectDetector(
-            weights=weights,
-            fallback_weights=fallback_weights,
-            conf_threshold=conf_threshold,
-            iou_threshold=iou_threshold,
-            device=device,
-        )
         self.class_names: dict[int, str] = class_names or {}
+
+        # use_npu switches the whole detection backend: PyTorch/Ultralytics
+        # (ObjectDetector, CPU or CUDA) vs. onnxruntime + the QNN execution
+        # provider (NpuObjectDetector, Hexagon HTP). Both implement the same
+        # detect(image) -> list[Detection] interface, so nothing below this
+        # needs to know which one is active. Flip use_npu back to False to
+        # fall back to plain CPU inference without touching anything else.
+        if use_npu:
+            if npu_weights is None:
+                raise ValueError("npu_weights is required when use_npu is true")
+            self.detector = NpuObjectDetector(
+                weights=npu_weights,
+                num_classes=len(self.class_names),
+                num_keypoints=num_keypoints,
+                conf_threshold=conf_threshold,
+                iou_threshold=iou_threshold,
+                qnn_backend_path=qnn_backend_path,
+            )
+        else:
+            self.detector = ObjectDetector(
+                weights=weights,
+                fallback_weights=fallback_weights,
+                conf_threshold=conf_threshold,
+                iou_threshold=iou_threshold,
+                device=device,
+            )
 
     def detect(self, image: np.ndarray) -> list[Detection]:
         """Every raw detection (pieces and dice together), unfiltered."""

@@ -62,6 +62,7 @@ def _load_ludo_pipeline(inference_config_path: Path) -> LudoStatePipeline:
     raw["board_config"] = _resolve_relative_to_perception(raw["board_config"])
     raw["model"]["weights"] = _resolve_relative_to_perception(raw["model"]["weights"])
     raw["model"]["fallback_weights"] = _resolve_relative_to_perception(raw["model"].get("fallback_weights"))
+    raw["model"]["npu_weights"] = _resolve_relative_to_perception(raw["model"].get("npu_weights"))
     return LudoStatePipeline(raw)
 
 

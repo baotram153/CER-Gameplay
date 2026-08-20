@@ -36,6 +36,10 @@ class LudoStatePipeline:
             iou_threshold=model_cfg["iou_threshold"],
             device=model_cfg["device"],
             class_names=model_cfg["class_names"],
+            use_npu=model_cfg.get("use_npu", False),
+            npu_weights=model_cfg.get("npu_weights"),
+            num_keypoints=model_cfg.get("num_keypoints", 2),
+            qnn_backend_path=model_cfg.get("qnn_backend_path", "libQnnHtp.so"),
         )
 
         self.entry_offsets: dict[Color, int] = {

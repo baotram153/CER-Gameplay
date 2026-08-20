@@ -20,6 +20,17 @@ model:
   iou_threshold: 0.5
   # null = let Ultralytics auto-select (GPU if available, else CPU).
   device: null
+  # Hexagon HTP (NPU) path: when true, ignores weights/fallback_weights/
+  # device above and instead runs npu_weights (a quantized ONNX export --
+  # see perception.training.export_npu) through onnxruntime's
+  # QNNExecutionProvider. Flip back to false to fall back to plain
+  # PyTorch/Ultralytics CPU (or CUDA, if available) inference without
+  # touching anything else in this file.
+  use_npu: false
+  npu_weights: models/best.int8.onnx
+  # Must match the checkpoint's kpt_shape (Ludo's pose model: center+head).
+  num_keypoints: 2
+  qnn_backend_path: libQnnHtp.so
   # Detector class id -> "piece_<color>" | "dice_<1-6>", exactly as baked
   # into the checkpoint at training time (see Auto-Labeling's
   # configs/autolabel.yaml, which these class names were generated from).

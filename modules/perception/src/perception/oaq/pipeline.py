@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import yaml
 
-from ..detection import ObjectDetector
+from ..detection import NpuObjectDetector, ObjectDetector
 from ..rectification import rectify_image
 from ..utils.visualize import draw_detections
 from .counting import assign_to_nearest_cell, count_per_cell, load_cells
@@ -20,14 +20,34 @@ class BoardStatePipeline:
         self.board_config = yaml.safe_load(board_config_path.read_text())
 
         model_cfg = inference_config["model"]
-        self.detector = ObjectDetector(
-            weights=model_cfg["weights"],
-            fallback_weights=model_cfg["fallback_weights"],
-            conf_threshold=model_cfg["conf_threshold"],
-            iou_threshold=model_cfg["iou_threshold"],
-            device=model_cfg["device"],
-        )
         self.class_names = inference_config["class_names"]
+
+        # use_npu switches the whole detection backend: PyTorch/Ultralytics
+        # (ObjectDetector, CPU or CUDA) vs. onnxruntime + the QNN execution
+        # provider (NpuObjectDetector, Hexagon HTP). Both implement the same
+        # detect(image) -> list[Detection] interface, so nothing below this
+        # needs to know which one is active. Flip use_npu back to False to
+        # fall back to plain CPU inference without touching anything else.
+        if model_cfg.get("use_npu", False):
+            npu_weights = model_cfg.get("npu_weights")
+            if npu_weights is None:
+                raise ValueError("model.npu_weights is required when model.use_npu is true")
+            self.detector = NpuObjectDetector(
+                weights=npu_weights,
+                num_classes=len(self.class_names),
+                num_keypoints=model_cfg.get("num_keypoints", 0),
+                conf_threshold=model_cfg["conf_threshold"],
+                iou_threshold=model_cfg["iou_threshold"],
+                qnn_backend_path=model_cfg.get("qnn_backend_path", "libQnnHtp.so"),
+            )
+        else:
+            self.detector = ObjectDetector(
+                weights=model_cfg["weights"],
+                fallback_weights=model_cfg["fallback_weights"],
+                conf_threshold=model_cfg["conf_threshold"],
+                iou_threshold=model_cfg["iou_threshold"],
+                device=model_cfg["device"],
+            )
 
     @classmethod
     def from_config_file(cls, config_path: str | Path) -> "BoardStatePipeline":
