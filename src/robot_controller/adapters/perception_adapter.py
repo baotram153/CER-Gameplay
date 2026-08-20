@@ -12,7 +12,10 @@ from common.type import BoardState
 from perception.ludo import LudoStatePipeline
 
 from ..camera.base import FrameSource
+from ..console_keys import ConsoleKeyDispatcher
+from ..detection_recorder import DetectionResultRecorder
 from ..errors import CameraError
+from ..snapshot_saver import SnapshotSaver
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,12 @@ class LudoPerceptionAdapter:
     swallowing: it means the camera itself is unrecoverably gone (see
     RealSenseCamera's reconnect logic), which the composition root's run
     loop needs to see and react to, not silently retry forever.
+
+    `key_dispatcher`/`snapshot_saver`/`detection_recorder` are optional
+    dev-tool hooks (see console_keys.py, snapshot_saver.py,
+    detection_recorder.py) -- polled/fed once per capture() call so they
+    stay in step with the camera regardless of which gameplay phase is
+    driving capture() right now.
     """
 
     def __init__(
@@ -40,13 +49,22 @@ class LudoPerceptionAdapter:
         camera: FrameSource,
         pipeline: LudoStatePipeline,
         visualize_dir: str | None = None,
+        key_dispatcher: ConsoleKeyDispatcher | None = None,
+        snapshot_saver: SnapshotSaver | None = None,
+        detection_recorder: DetectionResultRecorder | None = None,
     ) -> None:
         self._camera = camera
         self._pipeline = pipeline
         self._visualize_dir = visualize_dir
+        self._key_dispatcher = key_dispatcher
+        self._snapshot_saver = snapshot_saver
+        self._detection_recorder = detection_recorder
         self._frame_count = 0
 
     def capture(self, turn: Color) -> BoardState | None:
+        if self._key_dispatcher is not None:
+            self._key_dispatcher.poll()
+
         try:
             frame = self._camera.read()
         except CameraError:
@@ -58,6 +76,9 @@ class LudoPerceptionAdapter:
         if frame is None:
             logger.debug("No camera frame available this tick")
             return None
+
+        if self._snapshot_saver is not None:
+            self._snapshot_saver.maybe_save(frame)
 
         self._frame_count += 1
         image_name = f"frame_{self._frame_count:06d}.png" if self._visualize_dir else None
@@ -72,5 +93,8 @@ class LudoPerceptionAdapter:
         except Exception:
             logger.exception("Unexpected error running the perception pipeline; treating as no reading")
             return None
+
+        if self._detection_recorder is not None:
+            self._detection_recorder.maybe_record(snapshot)
 
         return snapshot.board_state

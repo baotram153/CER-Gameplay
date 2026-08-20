@@ -34,6 +34,42 @@ def test_load_config_applies_defaults(tmp_path):
     assert config.camera.width == 1280  # default
     assert config.manipulation.require_confirmation is True  # default
     assert config.runtime.max_steps == 10_000  # default
+    assert config.snapshot.enabled is False  # default
+    assert config.snapshot.key == "s"  # default
+    assert config.detection_recording.enabled is False  # default
+    assert config.detection_recording.start_key == "r"  # default
+    assert config.detection_recording.stop_key == "t"  # default
+
+
+def test_snapshot_and_detection_recording_can_be_configured(tmp_path):
+    overrides = {
+        "snapshot": {"enabled": True, "key": "p", "output_dir": "my_captures"},
+        "detection_recording": {"enabled": True, "start_key": "1", "stop_key": "2", "interval_s": 2.5},
+    }
+    config = load_config(_write_config(tmp_path, overrides))
+
+    assert config.snapshot.enabled is True
+    assert config.snapshot.key == "p"
+    assert config.snapshot.output_dir.name == "my_captures"
+    assert config.detection_recording.enabled is True
+    assert config.detection_recording.start_key == "1"
+    assert config.detection_recording.stop_key == "2"
+    assert config.detection_recording.interval_s == 2.5
+
+
+def test_detection_recording_rejects_identical_start_and_stop_keys(tmp_path):
+    overrides = {"detection_recording": {"enabled": True, "start_key": "r", "stop_key": "r"}}
+    with pytest.raises(ConfigError, match="start_key"):
+        load_config(_write_config(tmp_path, overrides))
+
+
+def test_rejects_a_snapshot_key_colliding_with_detection_recording_keys(tmp_path):
+    overrides = {
+        "snapshot": {"enabled": True, "key": "r"},
+        "detection_recording": {"enabled": True, "start_key": "r", "stop_key": "t"},
+    }
+    with pytest.raises(ConfigError, match="must all differ"):
+        load_config(_write_config(tmp_path, overrides))
 
 
 def test_load_config_missing_file_raises_config_error(tmp_path):

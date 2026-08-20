@@ -63,6 +63,29 @@ logging:
   backup_count: 5
   console: true
 
+snapshot:
+  # Dev tool: type this key + Enter on the console (during a tick where
+  # nothing else is prompting for input) to save the most recently read
+  # camera frame to output_dir -- handy for grabbing calibration/dataset
+  # photos while the robot runs. Off by default; works best with
+  # manipulation.require_confirmation: false, since an active confirmation
+  # prompt's input() call can otherwise "steal" a line meant for this key.
+  enabled: false
+  key: s
+  output_dir: captures
+
+detection_recording:
+  # Dev tool: type start_key/stop_key + Enter to toggle periodically
+  # saving perception's detection result (LudoBoardSnapshot, as JSON) to
+  # output_dir, every interval_s seconds while recording is on -- handy
+  # for building a labeled dataset or reviewing what the model saw over a
+  # stretch of real operation. Same stdin caveat as snapshot above.
+  enabled: false
+  start_key: r
+  stop_key: t
+  interval_s: 1.0
+  output_dir: detections
+
 runtime:
   # Delay between successive engine.step() calls -- this sets the
   # camera-polling cadence during the Wait-for-... phases (see

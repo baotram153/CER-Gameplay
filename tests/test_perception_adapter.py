@@ -95,3 +95,80 @@ def test_capture_passes_image_name_only_when_visualizing():
     _frame_arg, _turn, visualize_dir, image_name = pipeline.calls[0]
     assert visualize_dir == "out/"
     assert image_name is not None
+
+
+class _FakeDispatcher:
+    def __init__(self):
+        self.polled = 0
+
+    def poll(self) -> None:
+        self.polled += 1
+
+
+class _FakeSnapshotSaver:
+    def __init__(self):
+        self.frames = []
+
+    def maybe_save(self, frame):
+        self.frames.append(frame)
+
+
+class _FakeRecorder:
+    def __init__(self):
+        self.snapshots = []
+
+    def maybe_record(self, snapshot):
+        self.snapshots.append(snapshot)
+
+
+def test_capture_polls_the_key_dispatcher_every_call():
+    dispatcher = _FakeDispatcher()
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=None), pipeline=_FakePipeline(), key_dispatcher=dispatcher
+    )
+
+    adapter.capture(Color.GREEN)
+    adapter.capture(Color.GREEN)
+
+    assert dispatcher.polled == 2
+
+
+def test_capture_feeds_the_snapshot_saver_whenever_a_frame_is_read():
+    saver = _FakeSnapshotSaver()
+    frame = _frame()
+    pipeline = _FakePipeline(result=_FakeSnapshot(_BOARD))
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=frame), pipeline=pipeline, snapshot_saver=saver)
+
+    adapter.capture(Color.GREEN)
+
+    assert saver.frames == [frame]
+
+
+def test_capture_does_not_feed_the_snapshot_saver_when_no_frame_is_available():
+    saver = _FakeSnapshotSaver()
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=None), pipeline=_FakePipeline(), snapshot_saver=saver)
+
+    adapter.capture(Color.GREEN)
+
+    assert saver.frames == []
+
+
+def test_capture_feeds_the_detection_recorder_on_a_successful_read():
+    recorder = _FakeRecorder()
+    snapshot = _FakeSnapshot(_BOARD)
+    pipeline = _FakePipeline(result=snapshot)
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=_frame()), pipeline=pipeline, detection_recorder=recorder)
+
+    adapter.capture(Color.GREEN)
+
+    assert recorder.snapshots == [snapshot]
+
+
+def test_capture_does_not_feed_the_detection_recorder_on_a_failed_read():
+    recorder = _FakeRecorder()
+    pipeline = _FakePipeline(exc=ValueError("corner markers not found"))
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=_frame()), pipeline=pipeline, detection_recorder=recorder)
+
+    adapter.capture(Color.GREEN)
+
+    assert recorder.snapshots == []

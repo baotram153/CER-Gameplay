@@ -29,7 +29,10 @@ from .camera.base import FrameSource
 from .camera.directory_camera import DirectoryFrameSource
 from .camera.realsense_camera import RealSenseCamera
 from .config import REPO_ROOT, AppConfig, CameraConfig
+from .console_keys import ConsoleKeyDispatcher
+from .detection_recorder import DetectionResultRecorder
 from .errors import CameraError
+from .snapshot_saver import SnapshotSaver
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +79,42 @@ def build_camera(config: CameraConfig) -> FrameSource:
     return DirectoryFrameSource(config.directory)
 
 
+def _build_key_dispatcher(config: AppConfig) -> tuple[ConsoleKeyDispatcher | None, SnapshotSaver | None, DetectionResultRecorder | None]:
+    """Wires the dev-tool console keys (snapshot save, detection-recording
+    start/stop) onto one shared ConsoleKeyDispatcher -- see console_keys.py
+    for why they must share a single dispatcher rather than each polling
+    stdin independently. Returns (None, None, None) for whichever pieces
+    aren't enabled; the dispatcher itself is None only when nothing is.
+    """
+    snapshot_saver = SnapshotSaver(config.snapshot.output_dir) if config.snapshot.enabled else None
+    detection_recorder = (
+        DetectionResultRecorder(config.detection_recording.output_dir, config.detection_recording.interval_s)
+        if config.detection_recording.enabled
+        else None
+    )
+    if snapshot_saver is None and detection_recorder is None:
+        return None, None, None
+
+    dispatcher = ConsoleKeyDispatcher()
+    if snapshot_saver is not None:
+        dispatcher.on(config.snapshot.key, snapshot_saver.trigger)
+    if detection_recorder is not None:
+        dispatcher.on(config.detection_recording.start_key, detection_recorder.start)
+        dispatcher.on(config.detection_recording.stop_key, detection_recorder.stop)
+    return dispatcher, snapshot_saver, detection_recorder
+
+
 def build_engine(config: AppConfig, camera: FrameSource) -> GameplayEngine:
     pipeline = _load_ludo_pipeline(config.perception.inference_config)
+    key_dispatcher, snapshot_saver, detection_recorder = _build_key_dispatcher(config)
 
     perception = LudoPerceptionAdapter(
         camera=camera,
         pipeline=pipeline,
         visualize_dir=config.perception.visualize_dir,
+        key_dispatcher=key_dispatcher,
+        snapshot_saver=snapshot_saver,
+        detection_recorder=detection_recorder,
     )
     manipulation = ConsoleManipulationAdapter(require_confirmation=config.manipulation.require_confirmation)
 

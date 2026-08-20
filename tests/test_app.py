@@ -43,7 +43,48 @@ def test_resolve_relative_to_perception_is_independent_of_cwd(tmp_path):
     assert resolved == str(app._PERCEPTION_ROOT / "models" / "best.pt")
 
 
-def _config_with_camera(tmp_path, camera_overrides: dict):
+def test_build_key_dispatcher_returns_nothing_when_both_features_are_disabled(tmp_path):
+    config = _config_with_camera(tmp_path, {"backend": "directory", "directory": str(tmp_path)})
+    assert app._build_key_dispatcher(config) == (None, None, None)
+
+
+def test_build_key_dispatcher_wires_the_snapshot_key(tmp_path):
+    config = _config_with_camera(
+        tmp_path,
+        {"backend": "directory", "directory": str(tmp_path)},
+        extra={"snapshot": {"enabled": True, "key": "s", "output_dir": str(tmp_path / "captures")}},
+    )
+
+    dispatcher, snapshot_saver, detection_recorder = app._build_key_dispatcher(config)
+
+    assert snapshot_saver is not None
+    assert detection_recorder is None
+    dispatcher._handlers["s"]()  # simulate the key being pressed
+    assert snapshot_saver._armed is True
+
+
+def test_build_key_dispatcher_wires_both_recording_keys(tmp_path):
+    config = _config_with_camera(
+        tmp_path,
+        {"backend": "directory", "directory": str(tmp_path)},
+        extra={
+            "detection_recording": {
+                "enabled": True, "start_key": "r", "stop_key": "t", "output_dir": str(tmp_path / "detections"),
+            }
+        },
+    )
+
+    dispatcher, snapshot_saver, detection_recorder = app._build_key_dispatcher(config)
+
+    assert snapshot_saver is None
+    assert detection_recorder is not None
+    dispatcher._handlers["r"]()
+    assert detection_recorder.active is True
+    dispatcher._handlers["t"]()
+    assert detection_recorder.active is False
+
+
+def _config_with_camera(tmp_path, camera_overrides: dict, extra: dict | None = None):
     import yaml
 
     data = {
@@ -54,6 +95,7 @@ def _config_with_camera(tmp_path, camera_overrides: dict):
         },
         "camera": camera_overrides,
         "perception": {"inference_config": "modules/perception/configs/ludo/inference.yaml"},
+        **(extra or {}),
     }
     path = tmp_path / "app.yaml"
     path.write_text(yaml.safe_dump(data))

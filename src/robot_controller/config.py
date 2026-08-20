@@ -68,6 +68,27 @@ class ManipulationConfig:
 
 
 @dataclass(frozen=True)
+class SnapshotConfig:
+    # Dev tool: type `key` + Enter on the console to save the most
+    # recently read camera frame -- see src/robot_controller/snapshot_saver.py.
+    enabled: bool
+    key: str
+    output_dir: Path
+
+
+@dataclass(frozen=True)
+class DetectionRecordingConfig:
+    # Dev tool: type `start_key`/`stop_key` + Enter to toggle periodically
+    # saving perception's detection result -- see
+    # src/robot_controller/detection_recorder.py.
+    enabled: bool
+    start_key: str
+    stop_key: str
+    interval_s: float
+    output_dir: Path
+
+
+@dataclass(frozen=True)
 class LoggingConfig:
     level: str
     log_dir: Path
@@ -97,6 +118,8 @@ class AppConfig:
     manipulation: ManipulationConfig
     logging: LoggingConfig
     runtime: RuntimeConfig
+    snapshot: SnapshotConfig
+    detection_recording: DetectionRecordingConfig
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -147,6 +170,8 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
     manipulation_raw = raw.get("manipulation", {})
     logging_raw = raw.get("logging", {})
     runtime_raw = raw.get("runtime", {})
+    snapshot_raw = raw.get("snapshot", {})
+    detection_recording_raw = raw.get("detection_recording", {})
 
     game = GameConfig(
         game=game_raw["type"],
@@ -197,6 +222,34 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
         stuck_warning_attempts=runtime_raw.get("stuck_warning_attempts", 50),
     )
 
+    snapshot = SnapshotConfig(
+        enabled=snapshot_raw.get("enabled", False),
+        key=snapshot_raw.get("key", "s"),
+        output_dir=_resolve_path(snapshot_raw.get("output_dir", "captures")),
+    )
+
+    detection_recording = DetectionRecordingConfig(
+        enabled=detection_recording_raw.get("enabled", False),
+        start_key=detection_recording_raw.get("start_key", "r"),
+        stop_key=detection_recording_raw.get("stop_key", "t"),
+        interval_s=detection_recording_raw.get("interval_s", 1.0),
+        output_dir=_resolve_path(detection_recording_raw.get("output_dir", "detections")),
+    )
+    if detection_recording.enabled and detection_recording.start_key == detection_recording.stop_key:
+        raise ValueError(
+            "detection_recording.start_key and stop_key must differ, "
+            f"both are {detection_recording.start_key!r}"
+        )
+    if snapshot.enabled and detection_recording.enabled:
+        # All three are registered on the same ConsoleKeyDispatcher (see
+        # app.build_engine); a repeated key would silently overwrite an
+        # earlier handler rather than doing both.
+        keys = [snapshot.key, detection_recording.start_key, detection_recording.stop_key]
+        if len(set(keys)) != len(keys):
+            raise ValueError(
+                f"snapshot.key/detection_recording.start_key/stop_key must all differ, got {keys}"
+            )
+
     return AppConfig(
         game=game,
         camera=camera,
@@ -204,4 +257,6 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
         manipulation=manipulation,
         logging=logging_cfg,
         runtime=runtime,
+        snapshot=snapshot,
+        detection_recording=detection_recording,
     )

@@ -18,3 +18,8 @@ configs/robot_controller/*.yaml
 # robot_controller: run logs
 /logs/
 *.log
+
+# robot_controller: dev-tool output (snapshot_saver / detection_recorder
+# default output_dir -- see configs/robot_controller/app.example.yaml)
+/captures/
+/detections/
