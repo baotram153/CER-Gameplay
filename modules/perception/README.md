@@ -56,6 +56,7 @@ for f in dataset inference train; do cp configs/oaq/$f.example.yaml configs/oaq/
 
 # Ludo
 cp configs/ludo/inference.example.yaml configs/ludo/inference.yaml
+cp configs/ludo/roll_detection.example.yaml configs/ludo/roll_detection.yaml
 ```
 `../common/configs/ludo/board.yaml` (aruco marker IDs, `cells:` geometry) is
 committed directly rather than via a `.example.yaml` template — regenerate
@@ -71,6 +72,13 @@ and the die in a single pass — box + center/head keypoints per detection.
 describe an earlier two-separate-model design (a box-only pawn detector + a
 box-only dice detector with its own dice-bowl rectification) and are kept
 for reference only — they aren't wired into the current pipeline.
+
+`configs/ludo/roll_detection.yaml` holds every hyperparameter for
+[`ludo/roll_detector.py`](src/perception/ludo/roll_detector.py)'s
+motion/stability/validity thresholds (loaded via
+`RollDetector.from_config_file`) — this is the one place to tune those
+knobs against a real camera/lighting setup; see that file's own comments
+for what each value controls.
 
 All commands below are run from this directory (`modules/perception/`).
 

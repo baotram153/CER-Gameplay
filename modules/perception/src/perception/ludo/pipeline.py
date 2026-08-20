@@ -12,14 +12,15 @@ import numpy as np
 import yaml
 
 from common.constants import Color
-from common.type import BoardState, Piece, TrackCell
+from common.type import BoardState, TrackCell
 
 from ..detection import Detection
 from ..rectification import rectify_keep_frame
-from .detector import LudoDetector, piece_reference_point
+from .detector import LudoDetector
 from .dice import pick_dice_value
-from .models import DiceObservation, Keypoints, LudoBoardSnapshot, PieceObservation
-from .track import cell_to_pos, cells_for_color, load_track_cells
+from .models import DiceObservation, LudoBoardSnapshot
+from .pieces import assign_pieces
+from .track import load_track_cells
 from .visualize import draw_cells, draw_dice_detection, draw_piece_detections
 
 
@@ -76,7 +77,9 @@ class LudoStatePipeline:
         piece_detections = self.detector.pieces(detections)
         dice_candidates = self.detector.dice_candidates(detections)
 
-        pieces, piece_observations = self._assign_pieces(piece_detections, cells)
+        pieces, piece_observations = assign_pieces(
+            piece_detections, cells, self.entry_offsets, self.num_shared_steps
+        )
         dice_value, dice_detection = pick_dice_value(dice_candidates)
 
         board_state = BoardState(pieces=pieces, dice=dice_value, turn=turn, timestamp=time.time())
@@ -95,41 +98,6 @@ class LudoStatePipeline:
             )
 
         return snapshot
-
-    def _assign_pieces(
-        self, piece_detections: list[tuple[Color, Detection]], cells: list[TrackCell]
-    ) -> tuple[list[Piece], list[PieceObservation]]:
-        by_color: dict[Color, list[tuple[Detection, TrackCell]]] = {color: [] for color in Color}
-        cells_by_color = {color: cells_for_color(cells, color) for color in Color}
-        for color, det in piece_detections:
-            candidates = cells_by_color[color]
-            nearest = min(candidates, key=lambda cell: _sq_dist(piece_reference_point(det), cell.center))
-            by_color[color].append((det, nearest))
-
-        pieces: list[Piece] = []
-        observations: list[PieceObservation] = []
-        for color, found in by_color.items():
-            found = found[:4]
-            missing = 4 - len(found)
-            for det, cell in found:
-                pos = cell_to_pos(cell, color, self.entry_offsets, self.num_shared_steps)
-                pieces.append(Piece(color=color, pos=pos))
-                observations.append(
-                    PieceObservation(
-                        color=color,
-                        pos=pos,
-                        cell_id=cell.id,
-                        confidence=det.confidence,
-                        bbox=det.bbox,
-                        keypoints=_keypoints_from_detection(det),
-                    )
-                )
-            # A pawn the detector missed (occlusion, glare) is assumed to
-            # still be in its yard; Validation/Recovery reconciles this
-            # against the previous BoardState rather than perception
-            # guessing further.
-            pieces.extend([Piece(color=color, pos=0)] * missing)
-        return pieces, observations
 
     def _save_visualization(
         self,
@@ -157,14 +125,3 @@ class LudoStatePipeline:
 
         state_path = states_dir / f"{Path(image_name).stem}.json"
         state_path.write_text(json.dumps(asdict(snapshot), indent=2))
-
-
-def _keypoints_from_detection(det: Detection) -> Keypoints | None:
-    if det.keypoints is None or len(det.keypoints) < 2:
-        return None
-    (cx, cy, _), (hx, hy, _) = det.keypoints[0], det.keypoints[1]
-    return Keypoints(center=(cx, cy), head=(hx, hy))
-
-
-def _sq_dist(a: tuple[float, float], b: tuple[float, float]) -> float:
-    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2

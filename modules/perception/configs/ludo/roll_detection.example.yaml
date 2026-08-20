@@ -1,0 +1,43 @@
+# Roll-detection sub-pipeline configuration for cờ cá ngựa (Ludo) -- see
+# perception.ludo.roll_detector.RollDetector (loaded via .from_config_file).
+#
+# Tune these parameters by logging MotionDetector's
+# changed-ratio and RollDetector's per-frame dice reading while manually
+# rolling the die a few times, then adjusting thresholds until motion
+# triggers reliably on an actual roll (but not on ambient camera noise)
+# and stability settles within a second or so of the die stopping.
+
+frame_processing:
+  # Frames are downscaled to this [width, height] before any comparison 
+  # - keeps every check below sub-millisecond regardless of camera resolution.
+  downscale_size: [160, 120]
+  # Odd-sized Gaussian blur kernel [width, height] applied after
+  # downscaling, to smooth sensor noise so it doesn't register as motion.
+  blur_kernel: [5, 5]
+
+motion:
+  # Roll Detection phase: a frame counts as motion/occlusion once more
+  # than `area_ratio` of its pixels differ from the tracked background by
+  # more than `pixel_threshold` (0-255 grayscale, post-blur).
+  pixel_threshold: 25.0
+  area_ratio: 0.02
+  # Exponential-moving-average rate the background is updated at, applied
+  # only to frames NOT flagged as motion (0 = never adapts to lighting
+  # drift, 1 = snaps to every quiet frame instantly).
+  background_alpha: 0.05
+
+stability:
+  # A roll counts as "stable" once this many consecutive frames agree 
+  # on both the decoded face value have above-threshold confidence.
+  window: 5
+  min_confidence: 0.6
+
+validity:
+  # Confirm valid dice result phase: the settled frame must differ from
+  # the previous CONFIRMED roll's frame by more than this pixel
+  # threshold/area ratio (same meaning as motion.* above) to count as a
+  # genuinely new roll rather than a stale re-read of the same physical
+  # state -- checking the decoded VALUE instead doesn't work, since a die
+  # can legitimately land on the same face twice in a row.
+  pixel_diff_threshold: 25.0
+  pixel_diff_area_ratio: 0.02
