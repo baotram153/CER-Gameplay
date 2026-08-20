@@ -57,6 +57,7 @@ for f in dataset inference train; do cp configs/oaq/$f.example.yaml configs/oaq/
 # Ludo
 cp configs/ludo/inference.example.yaml configs/ludo/inference.yaml
 cp configs/ludo/roll_detection.example.yaml configs/ludo/roll_detection.yaml
+cp configs/ludo/movement_detection.example.yaml configs/ludo/movement_detection.yaml
 ```
 `../common/configs/ludo/board.yaml` (aruco marker IDs, `cells:` geometry) is
 committed directly rather than via a `.example.yaml` template — regenerate
@@ -79,6 +80,13 @@ motion/stability/validity thresholds (loaded via
 `RollDetector.from_config_file`) — this is the one place to tune those
 knobs against a real camera/lighting setup; see that file's own comments
 for what each value controls.
+
+`configs/ludo/movement_detection.yaml` is the same schema for
+[`ludo/movement_detector.py`](src/perception/ludo/movement_detector.py)'s
+`MovementDetector` (`.from_config_file`) — the analogous sub-machine for
+confirming a settled piece move instead of a settled dice roll; tune it
+separately since a piece slide is a slower, larger motion than a die
+settling.
 
 All commands below are run from this directory (`modules/perception/`).
 

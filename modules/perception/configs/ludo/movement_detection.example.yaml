@@ -1,0 +1,32 @@
+# Piece-movement-detection sub-pipeline configuration for cờ cá ngựa
+# (Ludo) -- see perception.ludo.movement_detector.MovementDetector
+# (loaded via .from_config_file). Same schema as roll_detection.yaml,
+# since both detectors share the same motion-gate -> stability-window ->
+# confirm shape -- see that file's own comments for what each key does.
+#
+# Tune these separately from roll_detection.yaml: sliding a piece across
+# the board is a slower, larger motion than a dice roll settling, so
+# stability.window in particular may need to be larger here.
+
+frame_processing:
+  downscale_size: [160, 120]
+  blur_kernel: [5, 5]
+
+motion:
+  pixel_threshold: 25.0
+  area_ratio: 0.02
+  background_alpha: 0.05
+
+stability:
+  # A move counts as "stable" once this many consecutive frames agree on
+  # every piece's assigned cell, each with above-threshold confidence.
+  window: 5
+  min_confidence: 0.6
+
+validity:
+  # The settled frame must differ from the previous CONFIRMED move's
+  # frame by more than this pixel threshold/area ratio to count as a
+  # genuinely new move rather than a stale re-read of the same physical
+  # state (same meaning as motion.* above).
+  pixel_diff_threshold: 25.0
+  pixel_diff_area_ratio: 0.02

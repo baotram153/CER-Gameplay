@@ -3,6 +3,7 @@ from .detector import LudoDetector
 from .dice import pick_dice_value
 from .models import DiceObservation, Keypoints, LudoBoardSnapshot, PieceObservation
 from .motion import MotionDetector
+from .movement_detector import MovementDetector
 from .pieces import assign_pieces
 from .pipeline import LudoStatePipeline
 from .roll_detector import RollDetector
@@ -19,6 +20,7 @@ __all__ = [
     "assign_pieces",
     "LudoStatePipeline",
     "RollDetector",
+    "MovementDetector",
     "cell_to_pos",
     "cells_for_color",
     "load_track_cells",
