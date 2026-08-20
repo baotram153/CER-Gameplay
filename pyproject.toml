@@ -12,4 +12,5 @@ members = [
     "modules/reasoning",
     "modules/manipulation",
     "modules/common",
+    "modules/gameplay",
 ]
