@@ -1,0 +1,76 @@
+# Copy this file to app.yaml (gitignored -- device-specific) and adjust it
+# for this machine's camera, board layout, and player assignments. See
+# src/robot_controller/config.py for the full schema this is parsed into,
+# and README.md for how to run it.
+
+game:
+  type: ludo
+  # Colors playing this game, in turn order. Every color listed here needs
+  # a player_roles entry below.
+  players: [green, yellow, red, blue]
+  player_roles:
+    green: human
+    yellow: human
+    red: human
+    blue: robot
+
+camera:
+  # "realsense" drives a live Intel RealSense color stream (requires
+  # pyrealsense2 to be importable -- see README). "directory" replays a
+  # folder of still images instead, for local development/testing on a
+  # machine with no camera attached.
+  backend: realsense
+  width: 1280
+  height: 720
+  fps: 30
+  # Serial number of a specific device, if more than one RealSense camera
+  # could be attached. null = use whichever one is plugged in. Can also be
+  # set via the ROBOT_CAMERA_SERIAL environment variable (takes priority
+  # over this value, handy for swapping rigs without editing the file).
+  serial_number: null
+  frame_timeout_ms: 5000
+  # After this many consecutive read failures, restart the camera pipeline
+  # instead of continuing to retry a broken one.
+  max_consecutive_errors: 10
+  max_reconnect_attempts: 5
+  reconnect_backoff_s: 2.0
+  # Only used when backend == "directory": a folder of images to replay,
+  # looping, in sorted-filename order. e.g. modules/perception/data/ludo/raw
+  directory: null
+
+perception:
+  # Path (relative to the repo root, or absolute) to the game's inference
+  # config -- see modules/perception/configs/ludo/inference.example.yaml.
+  inference_config: modules/perception/configs/ludo/inference.yaml
+  # If set, every capture() attempt writes its rectified frame + a
+  # boxes-drawn copy + a state JSON here (see LudoStatePipeline.run). Handy
+  # for debugging a live run; leave null to skip the extra disk I/O.
+  visualize_dir: null
+
+manipulation:
+  # No physical actuator exists yet (see modules/manipulation) -- a human
+  # operator performs the robot's physical actions instead, guided by
+  # console prompts/logs. require_confirmation waits for Enter before
+  # continuing each action; set false to run unattended and assume every
+  # action succeeds (e.g. a dry run against recorded frames).
+  require_confirmation: true
+
+logging:
+  level: INFO
+  log_dir: logs
+  file_name: robot_controller.log
+  max_bytes: 5000000
+  backup_count: 5
+  console: true
+
+runtime:
+  # Delay between successive engine.step() calls -- this sets the
+  # camera-polling cadence during the Wait-for-... phases (see
+  # gameplay.engine.GameplayEngine's docstring: "Whoever owns the camera
+  # ... drives the cadence").
+  tick_interval_s: 0.2
+  max_steps: 10000
+  # Log a warning if the FSM stays in the same phase for this many
+  # consecutive step() calls -- usually means the camera can't get a
+  # confident reading (framing/lighting) or a human hasn't acted yet.
+  stuck_warning_attempts: 50

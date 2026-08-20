@@ -1136,7 +1136,33 @@ wheels = [
 [[package]]
 name = "robot-controller"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
+dependencies = [
+    { name = "common" },
+    { name = "gameplay" },
+    { name = "manipulation" },
+    { name = "perception" },
+    { name = "pyyaml" },
+    { name = "reasoning" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "common", editable = "modules/common" },
+    { name = "gameplay", editable = "modules/gameplay" },
+    { name = "manipulation", editable = "modules/manipulation" },
+    { name = "perception", editable = "modules/perception" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "reasoning", editable = "modules/reasoning" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "setuptools"

@@ -9,3 +9,12 @@ wheels/
 # Virtual environments
 .venv
 .vscode
+
+# robot_controller: device-specific app config -- only the .example.yaml
+# template is committed (same convention as modules/*/configs).
+configs/robot_controller/*.yaml
+!configs/robot_controller/*.example.yaml
+
+# robot_controller: run logs
+/logs/
+*.log

@@ -1,10 +1,32 @@
 [project]
 name = "robot-controller"
 version = "0.1.0"
-description = "Add your description here"
+description = "Composition root: wires a live camera, perception, gameplay, and manipulation into one running game."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "common",
+    "gameplay",
+    "manipulation",
+    "perception",
+    "reasoning",
+    "pyyaml>=6.0",
+]
+
+# pyrealsense2 is intentionally NOT listed here: on some target platforms
+# (e.g. Jetson) it's installed system-wide via the vendor RealSense SDK
+# rather than pip, so pinning/resolving it through this workspace's lock
+# file would be the wrong assumption. Whatever machine runs
+# camera.backend=realsense just needs `import pyrealsense2` to work --
+# RealSenseCamera imports it lazily and raises a clear error if it's
+# missing (see src/robot_controller/camera/realsense_camera.py).
+
+[tool.uv.sources]
+common = { workspace = true }
+gameplay = { workspace = true }
+manipulation = { workspace = true }
+perception = { workspace = true }
+reasoning = { workspace = true }
 
 [tool.uv.workspace]
 members = [
@@ -14,3 +36,10 @@ members = [
     "modules/common",
     "modules/gameplay",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["uv_build>=0.11.30,<0.12.0"]
+build-backend = "uv_build"
