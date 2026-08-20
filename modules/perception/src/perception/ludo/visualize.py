@@ -71,3 +71,20 @@ def draw_dice_detection(image: np.ndarray, dice_detection: Detection, value: int
     label = f"dice={value} {dice_detection.confidence:.2f}"
     cv2.putText(canvas, label, (x1, max(y1 - 4, 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, DICE_BGR, 1)
     return canvas
+
+
+def build_boxes_image(
+    rectified: np.ndarray,
+    cells: list[TrackCell],
+    pieces: list[tuple[Color, Detection]],
+    dice_detection: Detection,
+    dice_value: int,
+) -> np.ndarray:
+    """The full debug overlay on one copy of `rectified`: cell markers +
+    piece boxes/keypoints + the dice box. What LudoStatePipeline saves to
+    visualize_dir/boxes/ and shows in robot_controller's live debug window
+    alike -- see LudoStatePipeline.last_visualization."""
+    image = draw_cells(rectified, cells)
+    image = draw_piece_detections(image, pieces)
+    image = draw_dice_detection(image, dice_detection, dice_value)
+    return image

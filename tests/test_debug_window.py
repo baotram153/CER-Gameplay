@@ -1,0 +1,70 @@
+import cv2
+import numpy as np
+
+import robot_controller.debug_window as debug_window_module
+from robot_controller.debug_window import DebugWindow, _resize_to_height, _side_by_side
+
+
+def _frame(h: int = 10, w: int = 10) -> np.ndarray:
+    return np.zeros((h, w, 3), dtype=np.uint8)
+
+
+def test_resize_to_height_preserves_aspect_ratio():
+    resized = _resize_to_height(_frame(h=10, w=20), height=20)
+    assert resized.shape[0] == 20
+    assert resized.shape[1] == 40
+
+
+def test_side_by_side_returns_the_raw_frame_alone_without_an_annotated_frame():
+    raw = _frame()
+    assert _side_by_side(raw, None) is raw
+
+
+def test_side_by_side_concatenates_horizontally_at_the_raw_frames_height():
+    raw = _frame(h=10, w=10)
+    annotated = _frame(h=20, w=20)  # a different size, e.g. the rectified frame
+
+    combined = _side_by_side(raw, annotated)
+
+    assert combined.shape[0] == 10
+    assert combined.shape[1] == 20  # 10 (raw) + 10 (annotated resized to height 10)
+
+
+def test_show_disables_itself_after_a_display_failure(monkeypatch):
+    def _raise(*args, **kwargs):
+        raise cv2.error("no display")
+
+    monkeypatch.setattr(debug_window_module.cv2, "imshow", _raise)
+    window = DebugWindow()
+
+    window.show(_frame())  # must not raise
+
+    assert window._available is False
+
+
+def test_show_stops_trying_once_disabled(monkeypatch):
+    calls = []
+
+    def _raise(*args, **kwargs):
+        calls.append(1)
+        raise cv2.error("no display")
+
+    monkeypatch.setattr(debug_window_module.cv2, "imshow", _raise)
+    window = DebugWindow()
+
+    window.show(_frame())
+    window.show(_frame())
+
+    assert len(calls) == 1
+
+
+def test_close_after_a_display_failure_is_a_noop(monkeypatch):
+    monkeypatch.setattr(debug_window_module.cv2, "imshow", lambda *a, **k: (_ for _ in ()).throw(cv2.error("x")))
+    destroy_calls = []
+    monkeypatch.setattr(debug_window_module.cv2, "destroyWindow", lambda name: destroy_calls.append(name))
+    window = DebugWindow()
+    window.show(_frame())
+
+    window.close()  # must not raise, and shouldn't try to destroy a window that was never shown
+
+    assert destroy_calls == []

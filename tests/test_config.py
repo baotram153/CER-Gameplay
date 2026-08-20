@@ -39,6 +39,12 @@ def test_load_config_applies_defaults(tmp_path):
     assert config.detection_recording.enabled is False  # default
     assert config.detection_recording.start_key == "r"  # default
     assert config.detection_recording.stop_key == "t"  # default
+    assert config.debug is False  # default
+
+
+def test_debug_flag_can_be_enabled(tmp_path):
+    config = load_config(_write_config(tmp_path, {"debug": True}))
+    assert config.debug is True
 
 
 def test_snapshot_and_detection_recording_can_be_configured(tmp_path):

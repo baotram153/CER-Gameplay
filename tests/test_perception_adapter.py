@@ -28,10 +28,13 @@ class _FakeCamera:
 
 
 class _FakePipeline:
-    def __init__(self, result=None, exc: Exception | None = None):
+    def __init__(self, result=None, exc: Exception | None = None, last_visualization=None, last_rectified=None):
         self._result = result
         self._exc = exc
         self.calls = []
+        # LudoStatePipeline's real debug side-channel -- see pipeline.py.
+        self.last_visualization = last_visualization
+        self.last_rectified = last_rectified
 
     def run(self, frame, turn, visualize_dir, image_name):
         self.calls.append((frame, turn, visualize_dir, image_name))
@@ -172,3 +175,44 @@ def test_capture_does_not_feed_the_detection_recorder_on_a_failed_read():
     adapter.capture(Color.GREEN)
 
     assert recorder.snapshots == []
+
+
+class _FakeDebugWindow:
+    def __init__(self):
+        self.calls = []
+
+    def show(self, raw_frame, annotated_frame):
+        self.calls.append((raw_frame, annotated_frame))
+
+
+def test_capture_shows_the_debug_window_with_the_pipelines_visualization_on_success():
+    window = _FakeDebugWindow()
+    frame = _frame()
+    visualization = _frame()
+    pipeline = _FakePipeline(result=_FakeSnapshot(_BOARD), last_visualization=visualization)
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=frame), pipeline=pipeline, debug_window=window)
+
+    adapter.capture(Color.GREEN)
+
+    assert window.calls == [(frame, visualization)]
+
+
+def test_capture_shows_the_debug_window_with_last_rectified_when_detection_fails():
+    window = _FakeDebugWindow()
+    frame = _frame()
+    rectified = _frame()
+    pipeline = _FakePipeline(exc=ValueError("dice not confident"), last_rectified=rectified)
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=frame), pipeline=pipeline, debug_window=window)
+
+    adapter.capture(Color.GREEN)
+
+    assert window.calls == [(frame, rectified)]
+
+
+def test_capture_does_not_show_the_debug_window_when_no_frame_is_available():
+    window = _FakeDebugWindow()
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=None), pipeline=_FakePipeline(), debug_window=window)
+
+    adapter.capture(Color.GREEN)
+
+    assert window.calls == []

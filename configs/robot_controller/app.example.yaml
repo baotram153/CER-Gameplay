@@ -86,6 +86,15 @@ detection_recording:
   interval_s: 1.0
   output_dir: detections
 
+# Opens a live window (see src/robot_controller/debug_window.py) showing
+# the raw RealSense/camera feed next to perception's latest annotated
+# (rectified + detected cells/pieces/dice) view. Needs a GUI-capable
+# OpenCV build and an actual display (X11/Wayland) -- silently disables
+# itself if neither is available (e.g. over SSH with no X forwarding).
+# Can also be turned on for a single run with `--debug`, regardless of
+# this value.
+debug: false
+
 runtime:
   # Delay between successive engine.step() calls -- this sets the
   # camera-polling cadence during the Wait-for-... phases (see

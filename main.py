@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import sys
 
 from robot_controller.config import load_config
@@ -17,6 +18,12 @@ def main() -> int:
         help="Path to the app config YAML (default: $ROBOT_CONTROLLER_CONFIG, "
         "or configs/robot_controller/app.yaml).",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Force debug mode on for this run (see debug: in the app config) -- "
+        "opens a live window showing the camera feed and perception's detections.",
+    )
     args = parser.parse_args()
 
     try:
@@ -26,6 +33,9 @@ def main() -> int:
         # startup failure goes straight to stderr instead.
         print(f"Config error: {exc}", file=sys.stderr)
         return 1
+
+    if args.debug:
+        config = dataclasses.replace(config, debug=True)
 
     configure_logging(config.logging)
 

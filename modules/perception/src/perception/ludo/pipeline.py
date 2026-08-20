@@ -12,16 +12,15 @@ import numpy as np
 import yaml
 
 from common.constants import Color
-from common.type import BoardState, TrackCell
+from common.type import BoardState
 
-from ..detection import Detection
 from ..rectification import rectify_keep_frame
 from .detector import LudoDetector
 from .dice import pick_dice_value
 from .models import DiceObservation, LudoBoardSnapshot
 from .pieces import assign_pieces
 from .track import load_track_cells
-from .visualize import draw_cells, draw_dice_detection, draw_piece_detections
+from .visualize import build_boxes_image
 
 
 class LudoStatePipeline:
@@ -43,6 +42,17 @@ class LudoStatePipeline:
             Color(name): offset for name, offset in self.board_config["entry_offsets"].items()
         }
         self.num_shared_steps: int = self.board_config["track"]["num_shared_steps"]
+
+        # Debug side-channel, updated by every successful run() call
+        # regardless of visualize_dir -- consumers that want a live view
+        # (e.g. robot_controller's debug window) read these after run()
+        # returns instead of every caller needing to pass visualize_dir
+        # and re-read files off disk. last_rectified is set as soon as
+        # rectification succeeds, even if a later step raises, so a debug
+        # viewer can still show "the board is framed" when the detector
+        # itself is what's failing.
+        self.last_rectified: np.ndarray | None = None
+        self.last_visualization: np.ndarray | None = None
 
     @classmethod
     def from_config_file(cls, config_path: str | Path) -> "LudoStatePipeline":
@@ -70,6 +80,7 @@ class LudoStatePipeline:
             raise ValueError(
                 "Could not detect all 4 board corner markers; check camera framing/lighting."
             )
+        self.last_rectified = rectified
 
         cells = load_track_cells(self.board_config, board_rect)
 
@@ -91,11 +102,10 @@ class LudoStatePipeline:
             ),
         )
 
+        self.last_visualization = build_boxes_image(rectified, cells, piece_detections, dice_detection, dice_value)
+
         if visualize_dir is not None:
-            self._save_visualization(
-                Path(visualize_dir), image_name, rectified, cells, piece_detections,
-                dice_detection, dice_value, snapshot,
-            )
+            self._save_visualization(Path(visualize_dir), image_name, rectified, snapshot)
 
         return snapshot
 
@@ -104,10 +114,6 @@ class LudoStatePipeline:
         visualize_dir: Path,
         image_name: str,
         rectified: np.ndarray,
-        cells: list[TrackCell],
-        piece_detections: list[tuple[Color, Detection]],
-        dice_detection: Detection,
-        dice_value: int,
         snapshot: LudoBoardSnapshot,
     ) -> None:
         rectified_dir = visualize_dir / "rectified"
@@ -117,11 +123,7 @@ class LudoStatePipeline:
             directory.mkdir(parents=True, exist_ok=True)
 
         cv2.imwrite(str(rectified_dir / image_name), rectified)
-
-        boxes_image = draw_cells(rectified, cells)
-        boxes_image = draw_piece_detections(boxes_image, piece_detections)
-        boxes_image = draw_dice_detection(boxes_image, dice_detection, dice_value)
-        cv2.imwrite(str(boxes_dir / image_name), boxes_image)
+        cv2.imwrite(str(boxes_dir / image_name), self.last_visualization)
 
         state_path = states_dir / f"{Path(image_name).stem}.json"
         state_path.write_text(json.dumps(asdict(snapshot), indent=2))

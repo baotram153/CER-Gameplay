@@ -120,6 +120,11 @@ class AppConfig:
     runtime: RuntimeConfig
     snapshot: SnapshotConfig
     detection_recording: DetectionRecordingConfig
+    # Opens a live window (see debug_window.py) showing the raw camera feed
+    # next to perception's latest annotated view. Also settable with
+    # `--debug` on the command line (main.py), which forces this on
+    # regardless of the config file.
+    debug: bool
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -259,4 +264,5 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
         runtime=runtime,
         snapshot=snapshot,
         detection_recording=detection_recording,
+        debug=bool(raw.get("debug", False)),
     )

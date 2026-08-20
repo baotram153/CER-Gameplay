@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import logging
 
+import numpy as np
+
 from common.constants import Color
 from common.type import BoardState
 from perception.ludo import LudoStatePipeline
 
 from ..camera.base import FrameSource
 from ..console_keys import ConsoleKeyDispatcher
+from ..debug_window import DebugWindow
 from ..detection_recorder import DetectionResultRecorder
 from ..errors import CameraError
 from ..snapshot_saver import SnapshotSaver
@@ -37,11 +40,11 @@ class LudoPerceptionAdapter:
     RealSenseCamera's reconnect logic), which the composition root's run
     loop needs to see and react to, not silently retry forever.
 
-    `key_dispatcher`/`snapshot_saver`/`detection_recorder` are optional
-    dev-tool hooks (see console_keys.py, snapshot_saver.py,
-    detection_recorder.py) -- polled/fed once per capture() call so they
-    stay in step with the camera regardless of which gameplay phase is
-    driving capture() right now.
+    `key_dispatcher`/`snapshot_saver`/`detection_recorder`/`debug_window`
+    are optional dev-tool hooks (see console_keys.py, snapshot_saver.py,
+    detection_recorder.py, debug_window.py) -- polled/fed once per
+    capture() call so they stay in step with the camera regardless of
+    which gameplay phase is driving capture() right now.
     """
 
     def __init__(
@@ -52,6 +55,7 @@ class LudoPerceptionAdapter:
         key_dispatcher: ConsoleKeyDispatcher | None = None,
         snapshot_saver: SnapshotSaver | None = None,
         detection_recorder: DetectionResultRecorder | None = None,
+        debug_window: DebugWindow | None = None,
     ) -> None:
         self._camera = camera
         self._pipeline = pipeline
@@ -59,6 +63,7 @@ class LudoPerceptionAdapter:
         self._key_dispatcher = key_dispatcher
         self._snapshot_saver = snapshot_saver
         self._detection_recorder = detection_recorder
+        self._debug_window = debug_window
         self._frame_count = 0
 
     def capture(self, turn: Color) -> BoardState | None:
@@ -89,12 +94,23 @@ class LudoPerceptionAdapter:
             )
         except ValueError as exc:
             logger.debug("Board reading not confident this tick: %s", exc)
+            self._show_debug(frame)
             return None
         except Exception:
             logger.exception("Unexpected error running the perception pipeline; treating as no reading")
+            self._show_debug(frame)
             return None
 
         if self._detection_recorder is not None:
             self._detection_recorder.maybe_record(snapshot)
 
+        self._show_debug(frame)
         return snapshot.board_state
+
+    def _show_debug(self, raw_frame: np.ndarray) -> None:
+        if self._debug_window is None:
+            return
+        annotated = self._pipeline.last_visualization
+        if annotated is None:
+            annotated = self._pipeline.last_rectified
+        self._debug_window.show(raw_frame, annotated)

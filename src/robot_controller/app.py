@@ -30,6 +30,7 @@ from .camera.directory_camera import DirectoryFrameSource
 from .camera.realsense_camera import RealSenseCamera
 from .config import REPO_ROOT, AppConfig, CameraConfig
 from .console_keys import ConsoleKeyDispatcher
+from .debug_window import DebugWindow
 from .detection_recorder import DetectionResultRecorder
 from .errors import CameraError
 from .snapshot_saver import SnapshotSaver
@@ -104,7 +105,7 @@ def _build_key_dispatcher(config: AppConfig) -> tuple[ConsoleKeyDispatcher | Non
     return dispatcher, snapshot_saver, detection_recorder
 
 
-def build_engine(config: AppConfig, camera: FrameSource) -> GameplayEngine:
+def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWindow | None = None) -> GameplayEngine:
     pipeline = _load_ludo_pipeline(config.perception.inference_config)
     key_dispatcher, snapshot_saver, detection_recorder = _build_key_dispatcher(config)
 
@@ -115,6 +116,7 @@ def build_engine(config: AppConfig, camera: FrameSource) -> GameplayEngine:
         key_dispatcher=key_dispatcher,
         snapshot_saver=snapshot_saver,
         detection_recorder=detection_recorder,
+        debug_window=debug_window,
     )
     manipulation = ConsoleManipulationAdapter(require_confirmation=config.manipulation.require_confirmation)
 
@@ -144,6 +146,7 @@ def run(config: AppConfig) -> GameResult | None:
     should read the log, not branch on this.
     """
     camera = build_camera(config.camera)
+    debug_window = DebugWindow() if config.debug else None
 
     try:
         camera.start()
@@ -152,7 +155,7 @@ def run(config: AppConfig) -> GameResult | None:
         return None
 
     try:
-        engine = build_engine(config, camera)
+        engine = build_engine(config, camera, debug_window)
     except Exception:
         logger.critical("Could not build the gameplay engine; aborting.", exc_info=True)
         camera.stop()
@@ -170,6 +173,8 @@ def run(config: AppConfig) -> GameResult | None:
         result = None
     finally:
         camera.stop()
+        if debug_window is not None:
+            debug_window.close()
 
     if result is not None:
         logger.info(
