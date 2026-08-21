@@ -13,16 +13,21 @@ plain `pip install onnxruntime` -- the pre/post-processing below is backend
 -agnostic.)
 
 Exporting to ONNX drops Ultralytics' AutoBackend pre/post-processing, so
-this class does its own letterbox preprocessing and raw-output decode
-(box regression + class scores + optional keypoints, then the same
-torchvision batched_nms detector.py uses). The channel layout assumed here
--- (1, 4 + num_classes + num_keypoints * 3, num_anchors), boxes in
-letterboxed-pixel cx/cy/w/h, class scores and keypoint visibility already
-sigmoid-activated -- was verified against a real `yolo11n-pose` ONNX export
-(Ultralytics 8.4.112, opset 17) by comparing this module's decode against
-`YOLO(...).predict()` on the same image. Re-verify it the same way against
-your actual fine-tuned checkpoint before trusting it on real data: export
-formats have changed across Ultralytics versions before.
+this class does its own letterbox preprocessing and raw-output decode.
+The checkpoints this project exports use Ultralytics' NMS-baked,
+end-to-end ONNX head, so decoding is just slicing a fixed-size output --
+no manual per-class argmax or NMS pass needed. The channel layout
+assumed here -- (1, max_det, 4 + 2 + num_keypoints * 3), boxes in
+letterboxed-pixel x1/y1/x2/y2, followed by confidence, float-valued class
+id, then (x, y, visibility) per keypoint -- was verified against this
+project's own `best.onnx`/`best.int8.onnx` (a YOLO26-pose export) by
+inspecting `session.get_outputs()` and the graph node feeding it
+(`Concat` of box/score/class/keypoint sub-tensors -- see
+../training/export_npu.py). Re-verify it the same way against any future
+checkpoint before trusting it on real data: export formats have changed
+across Ultralytics versions before, and an older export (e.g. YOLO11's
+raw per-anchor, multi-class-score output, without baked-in NMS) would
+need a different decode entirely.
 """
 from __future__ import annotations
 
@@ -31,8 +36,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import torch
-from torchvision.ops import batched_nms
 
 from .detector import Detection
 
@@ -86,12 +89,13 @@ class NpuObjectDetector:
         input_size: int = 640,
         conf_threshold: float = 0.4,
         iou_threshold: float = 0.5,
-        qnn_backend_path: str = "libQnnHtp.so",
+        qnn_backend_path: str | None = None,
         providers: list[str] | None = None,
         provider_options: list[dict] | None = None,
     ) -> None:
         try:
             import onnxruntime as ort
+            import onnxruntime_qnn as qnn_ep
         except ImportError as exc:
             raise RuntimeError(
                 "onnxruntime is not installed. On-device, install the "
@@ -103,14 +107,42 @@ class NpuObjectDetector:
             ) from exc
 
         providers = providers or DEFAULT_QNN_PROVIDERS
-        if provider_options is None:
-            provider_options = [
-                {"backend_path": qnn_backend_path} if p == "QNNExecutionProvider" else {}
-                for p in providers
-            ]
-        self.session = ort.InferenceSession(
-            str(weights), providers=providers, provider_options=provider_options
-        )
+        if "QNNExecutionProvider" in providers:
+            # onnxruntime-qnn ships QNN as an out-of-tree EP plugin rather
+            # than a provider built into onnxruntime itself, so it must be
+            # registered by library path -- and, unlike built-in providers,
+            # a plugin EP registered this way can only actually be selected
+            # through the newer OrtEpDevice API below. Passing
+            # "QNNExecutionProvider" as a plain provider name to
+            # InferenceSession (the old providers=[...] API) silently
+            # no-ops: no exception, no ORT log line, straight CPU fallback,
+            # even though get_available_providers() lists it as registered.
+            ort.register_execution_provider_library(
+                "QNNExecutionProvider", qnn_ep.get_library_path()
+            )
+            if qnn_backend_path is None:
+                # Default to the backend .so bundled with *this*
+                # onnxruntime-qnn wheel rather than a bare "libQnnHtp.so":
+                # the dynamic linker can resolve that name to an unrelated
+                # QNN SDK install elsewhere on the system (e.g. a device's
+                # /usr/lib from its own BSP image) whose QNN Core interface
+                # version doesn't match this plugin's -- which fails
+                # ("Unable to find a valid interface for ...") just as
+                # silently under the old API.
+                qnn_backend_path = str(Path(qnn_ep.get_library_path()).parent / "libQnnHtp.so")
+            qnn_devices = [d for d in ort.get_ep_devices() if d.ep_name == "QNNExecutionProvider"]
+            session_options = ort.SessionOptions()
+            if qnn_devices:
+                session_options.add_provider_for_devices(
+                    qnn_devices, {"backend_path": qnn_backend_path}
+                )
+            self.session = ort.InferenceSession(str(weights), sess_options=session_options)
+        else:
+            if provider_options is None:
+                provider_options = [{} for _ in providers]
+            self.session = ort.InferenceSession(
+                str(weights), providers=providers, provider_options=provider_options
+            )
         self.input_name = self.session.get_inputs()[0].name
 
         # get_providers() confirms the execution provider registered, not
@@ -139,6 +171,10 @@ class NpuObjectDetector:
         self.num_keypoints = num_keypoints
         self.input_size = input_size
         self.conf_threshold = conf_threshold
+        # Unused: NMS is baked into this export's end-to-end ONNX head
+        # (see the module docstring), so there's no separate IoU-based
+        # dedup pass to threshold here. Kept for interface parity with
+        # ObjectDetector, whose config key this shares.
         self.iou_threshold = iou_threshold
 
     def detect(self, image: np.ndarray) -> list[Detection]:
@@ -146,40 +182,27 @@ class NpuObjectDetector:
         blob = padded[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
         blob = np.expand_dims(blob, 0)
 
-        raw = self.session.run(None, {self.input_name: blob})[0]  # (1, C, N)
-        raw = raw[0].T  # (N, C)
+        raw = self.session.run(None, {self.input_name: blob})[0]
+        raw = raw[0]  # (max_det, 4 + 2 + num_keypoints * 3)
 
-        boxes_xywh = raw[:, :4]
-        class_scores = raw[:, 4 : 4 + self.num_classes]
-        class_ids = class_scores.argmax(axis=1)
-        confidences = class_scores[np.arange(len(raw)), class_ids]
+        boxes_xyxy = raw[:, :4]
+        confidences = raw[:, 4]
+        class_ids = raw[:, 5]
 
         keep_mask = confidences > self.conf_threshold
         if not keep_mask.any():
             return []
 
-        boxes_xywh = boxes_xywh[keep_mask]
-        class_ids = class_ids[keep_mask]
+        boxes_xyxy = boxes_xyxy[keep_mask]
         confidences = confidences[keep_mask]
-
-        cx, cy, w, h = boxes_xywh.T
-        boxes_xyxy = np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], axis=1)
-
-        keep = batched_nms(
-            torch.from_numpy(boxes_xyxy.astype(np.float32)),
-            torch.from_numpy(confidences.astype(np.float32)),
-            torch.from_numpy(class_ids),
-            self.iou_threshold,
-        )
+        class_ids = class_ids[keep_mask].round().astype(int)
 
         keypoints_all = None
         if self.num_keypoints:
-            keypoints_all = raw[keep_mask][:, 4 + self.num_classes :].reshape(
-                -1, self.num_keypoints, 3
-            )
+            keypoints_all = raw[keep_mask][:, 6:].reshape(-1, self.num_keypoints, 3)
 
         detections = []
-        for idx in keep.tolist():
+        for idx in range(len(boxes_xyxy)):
             bx1, by1 = _undo_letterbox(boxes_xyxy[idx, :2], scale, pad_x, pad_y)
             bx2, by2 = _undo_letterbox(boxes_xyxy[idx, 2:], scale, pad_x, pad_y)
 

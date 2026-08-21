@@ -11,6 +11,9 @@ dependencies = [
     "perception",
     "reasoning",
     "pyyaml>=6.0",
+    "onnxruntime>=1.29.0",
+    "onnx>=1.22.0",
+    "onnxruntime-qnn>=2.5.0",
 ]
 
 # pyrealsense2 is intentionally NOT listed here: on some target platforms

@@ -14,7 +14,7 @@ import yaml
 from common.constants import Color
 from common.type import BoardState
 
-from ..rectification import rectify_keep_frame
+from ..rectification import BoardRectifier
 from .detector import LudoDetector
 from .dice import pick_dice_value
 from .models import DiceObservation, LudoBoardSnapshot
@@ -39,8 +39,16 @@ class LudoStatePipeline:
             use_npu=model_cfg.get("use_npu", False),
             npu_weights=model_cfg.get("npu_weights"),
             num_keypoints=model_cfg.get("num_keypoints", 2),
-            qnn_backend_path=model_cfg.get("qnn_backend_path", "libQnnHtp.so"),
+            qnn_backend_path=model_cfg.get("qnn_backend_path"),
         )
+
+        # A gameplay session's camera+board are physically fixed, so corner
+        # positions barely move between run() calls -- BoardRectifier
+        # exploits that to skip most of rectify_keep_frame's cost on
+        # repeat calls (see its docstring). A one-off caller with no
+        # "previous frame" to reuse should use rectify_keep_frame directly
+        # instead.
+        self._rectifier = BoardRectifier()
 
         self.entry_offsets: dict[Color, int] = {
             Color(name): offset for name, offset in self.board_config["entry_offsets"].items()
@@ -79,7 +87,7 @@ class LudoStatePipeline:
         if visualize_dir is not None and image_name is None:
             raise ValueError("image_name is required when visualize_dir is set")
 
-        rectified, board_rect = rectify_keep_frame(raw_image, self.board_config)
+        rectified, board_rect = self._rectifier.rectify_keep_frame(raw_image, self.board_config)
         if rectified is None:
             raise ValueError(
                 "Could not detect all 4 board corner markers; check camera framing/lighting."

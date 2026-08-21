@@ -19,11 +19,51 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import onnx
 from ultralytics import YOLO
 
 from ..detection.npu_detector import letterbox
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
+
+# The only ops worth quantizing for NPU speed are the actual per-pixel
+# compute; everything else in the end-to-end export head (Concat, Cast,
+# Gather, Sigmoid, TopK, ...) is cheap decode/postprocessing math.
+_COMPUTE_OP_TYPES = frozenset({"Conv", "MatMul", "Gemm"})
+
+
+def _postprocessing_nodes_to_exclude(model: "onnx.ModelProto") -> list[str]:
+    """Every node in the decode/postprocessing subgraph feeding the
+    model's output(s), found by walking backward from the outputs and
+    stopping at (but not including) the nearest _COMPUTE_OP_TYPES node.
+
+    The end-to-end export head concatenates fields with very different
+    natural ranges into one output tensor -- box coordinates (pixels, up
+    to `input_size`), confidence (0-1), class id (0-num_classes), keypoint
+    (x, y, visibility) -- see the module docstring and
+    ../detection/npu_detector.py's decode. A single per-tensor int8 scale
+    anywhere in that decode chain ends up dominated by the widest-range
+    field and can't represent the narrow-range ones at all (e.g. a scale
+    of ~2.5 can't distinguish a confidence of 0 from 1). Keeping the whole
+    decode subgraph float32 costs nothing worth mentioning -- it's a
+    handful of elements per detection, run once after the real (and still
+    quantized) backbone/head convolutions.
+    """
+    producer_of = {out: n for n in model.graph.node for out in n.output}
+    excluded: set[str] = set()
+    frontier = [o.name for o in model.graph.output]
+    seen: set[str] = set()
+    while frontier:
+        tensor = frontier.pop()
+        if tensor in seen:
+            continue
+        seen.add(tensor)
+        node = producer_of.get(tensor)
+        if node is None or node.op_type in _COMPUTE_OP_TYPES:
+            continue
+        excluded.add(node.name)
+        frontier.extend(node.input)
+    return list(excluded)
 
 
 def export_onnx(weights: str | Path, opset: int = 17) -> str:
@@ -70,12 +110,14 @@ def quantize(
 
     onnx_path = str(onnx_path)
     output_path = str(Path(onnx_path).with_suffix("")) + ".int8.onnx"
-    input_name = (
-        ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"]).get_inputs()[0].name
-    )
+    session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    input_name = session.get_inputs()[0].name
     reader = _ImageFolderCalibrationReader(
         calibration_image_dir, input_name, input_size, max_calibration_images
     )
+
+    model = onnx.load(onnx_path)
+    excluded_nodes = _postprocessing_nodes_to_exclude(model)
 
     # QDQ format + asymmetric uint8 activations / symmetric int8 weights is
     # the quantization convention Hexagon/QNN tooling expects -- confirm
@@ -90,6 +132,7 @@ def quantize(
         weight_type=QuantType.QInt8,
         calibrate_method=CalibrationMethod.MinMax,
         per_channel=False,
+        nodes_to_exclude=excluded_nodes,
     )
     return output_path
 

@@ -38,7 +38,7 @@ class BoardStatePipeline:
                 num_keypoints=model_cfg.get("num_keypoints", 0),
                 conf_threshold=model_cfg["conf_threshold"],
                 iou_threshold=model_cfg["iou_threshold"],
-                qnn_backend_path=model_cfg.get("qnn_backend_path", "libQnnHtp.so"),
+                qnn_backend_path=model_cfg.get("qnn_backend_path"),
             )
         else:
             self.detector = ObjectDetector(

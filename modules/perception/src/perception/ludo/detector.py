@@ -43,7 +43,7 @@ class LudoDetector:
         use_npu: bool = False,
         npu_weights: str | Path | None = None,
         num_keypoints: int = 2,
-        qnn_backend_path: str = "libQnnHtp.so",
+        qnn_backend_path: str | None = None,
     ) -> None:
         self.class_names: dict[int, str] = class_names or {}
 

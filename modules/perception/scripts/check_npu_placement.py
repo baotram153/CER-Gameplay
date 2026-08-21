@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -26,9 +27,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", required=True, help="Path to the .onnx/.int8.onnx model")
     parser.add_argument("--image", required=True, help="A representative image to run through the model")
-    parser.add_argument("--backend-path", default="libQnnHtp.so")
+    parser.add_argument("--backend-path", default=None)
     parser.add_argument("--input-size", type=int, default=640)
     args = parser.parse_args()
+
+    import onnxruntime_qnn as qnn_ep
+
+    # QNN ships as an out-of-tree EP plugin, not a provider built into
+    # onnxruntime, so it must be registered by library path -- and can
+    # only actually be selected through this device-based API, not the
+    # legacy providers=[...] list (see npu_detector.py's __init__ for the
+    # full explanation). Using the legacy API here would make every model
+    # look like it silently falls back to CPU, regardless of whether the
+    # backend path below is actually correct.
+    ort.register_execution_provider_library("QNNExecutionProvider", qnn_ep.get_library_path())
+    backend_path = args.backend_path or str(Path(qnn_ep.get_library_path()).parent / "libQnnHtp.so")
+    qnn_devices = [d for d in ort.get_ep_devices() if d.ep_name == "QNNExecutionProvider"]
 
     # Verbose logging makes onnxruntime print a "Node placements" line per
     # execution provider (e.g. "Number of nodes: N") during session
@@ -37,13 +51,10 @@ def main() -> None:
     session_options = ort.SessionOptions()
     session_options.log_severity_level = 0
     session_options.enable_profiling = True
+    if qnn_devices:
+        session_options.add_provider_for_devices(qnn_devices, {"backend_path": backend_path})
 
-    session = ort.InferenceSession(
-        args.weights,
-        sess_options=session_options,
-        providers=["QNNExecutionProvider", "CPUExecutionProvider"],
-        provider_options=[{"backend_path": args.backend_path}, {}],
-    )
+    session = ort.InferenceSession(args.weights, sess_options=session_options)
     print(
         "registered providers (NOT the same as per-node placement -- see "
         "the 'Node placements' lines in stderr above):",

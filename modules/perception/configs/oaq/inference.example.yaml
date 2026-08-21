@@ -17,11 +17,16 @@ model:
   # QNNExecutionProvider. Flip back to false to fall back to plain
   # PyTorch/Ultralytics CPU (or CUDA, if available) inference without
   # touching anything else in this file.
-  use_npu: false
+  use_npu: true
   npu_weights: models/best.int8.onnx
   # This model is box-only (no pose keypoints).
   num_keypoints: 0
-  qnn_backend_path: libQnnHtp.so
+  # null = use the libQnnHtp.so bundled with the installed onnxruntime-qnn
+  # wheel, which is guaranteed to match its QNN Core interface version.
+  # Only override this if you need a different backend build (e.g. a
+  # system QNN SDK install) -- pointing at a mismatched one fails with
+  # "Unable to find a valid interface" instead of activating the NPU.
+  qnn_backend_path: null
 
 class_names:
   0: mandarin_piece
