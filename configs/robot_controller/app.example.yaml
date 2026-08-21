@@ -95,6 +95,14 @@ detection_recording:
 # this value.
 debug: false
 
+debug_window:
+  # Caps the rendered frame's width in pixels (only ever downscales) and
+  # throttles redraws to this many seconds apart, so the debug window
+  # stays cheap on constrained edge hardware even under a tight polling
+  # loop (runtime.tick_interval_s: 0).
+  max_width: 960
+  min_interval_s: 0.2
+
 runtime:
   # Delay between successive engine.step() calls -- this sets the
   # camera-polling cadence during the Wait-for-... phases (see

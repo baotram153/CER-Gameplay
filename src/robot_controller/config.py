@@ -99,6 +99,17 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True)
+class DebugWindowConfig:
+    # Keeps the debug window (see debug_window.py) cheap on constrained
+    # edge hardware: max_width caps the size of the rendered raw+annotated
+    # frame (only ever downscales, never enlarges), and min_interval_s
+    # throttles redraws so a tight polling loop (tick_interval_s: 0) can't
+    # turn the debug window itself into the bottleneck.
+    max_width: int
+    min_interval_s: float
+
+
+@dataclass(frozen=True)
 class RuntimeConfig:
     # Delay between successive GameplayEngine.step() calls -- sets the
     # camera-polling cadence during the Wait-for-... phases.
@@ -125,6 +136,7 @@ class AppConfig:
     # `--debug` on the command line (main.py), which forces this on
     # regardless of the config file.
     debug: bool
+    debug_window: DebugWindowConfig
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -177,6 +189,7 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
     runtime_raw = raw.get("runtime", {})
     snapshot_raw = raw.get("snapshot", {})
     detection_recording_raw = raw.get("detection_recording", {})
+    debug_window_raw = raw.get("debug_window", {})
 
     game = GameConfig(
         game=game_raw["type"],
@@ -255,6 +268,11 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
                 f"snapshot.key/detection_recording.start_key/stop_key must all differ, got {keys}"
             )
 
+    debug_window = DebugWindowConfig(
+        max_width=debug_window_raw.get("max_width", 960),
+        min_interval_s=debug_window_raw.get("min_interval_s", 0.2),
+    )
+
     return AppConfig(
         game=game,
         camera=camera,
@@ -265,4 +283,5 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
         snapshot=snapshot,
         detection_recording=detection_recording,
         debug=bool(raw.get("debug", False)),
+        debug_window=debug_window,
     )

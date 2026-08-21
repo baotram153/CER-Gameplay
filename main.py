@@ -22,7 +22,8 @@ def main() -> int:
         "--debug",
         action="store_true",
         help="Force debug mode on for this run (see debug: in the app config) -- "
-        "opens a live window showing the camera feed and perception's detections.",
+        "opens a live window (see debug_window: in the app config) showing the "
+        "camera feed and perception's detections.",
     )
     args = parser.parse_args()
 

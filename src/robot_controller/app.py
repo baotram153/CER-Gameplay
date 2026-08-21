@@ -147,7 +147,14 @@ def run(config: AppConfig) -> GameResult | None:
     should read the log, not branch on this.
     """
     camera = build_camera(config.camera)
-    debug_window = DebugWindow() if config.debug else None
+    debug_window = (
+        DebugWindow(
+            max_width=config.debug_window.max_width,
+            min_interval_s=config.debug_window.min_interval_s,
+        )
+        if config.debug
+        else None
+    )
 
     try:
         camera.start()
