@@ -43,7 +43,12 @@ def frame_signature(
     return cv2.GaussianBlur(gray, blur_kernel, 0).astype(np.float32)
 
 
-def _changed_ratio(a: np.ndarray, b: np.ndarray, pixel_threshold: float) -> float:
+def changed_ratio(a: np.ndarray, b: np.ndarray, pixel_threshold: float) -> float:
+    """Fraction of `a`'s pixels that differ from `b` by more than
+    `pixel_threshold`. Public (not just an implementation detail of
+    signatures_differ below) so a caller that needs the actual number --
+    e.g. RollDetector logging why a candidate roll's pixel-diff check
+    passed or failed -- doesn't have to recompute it."""
     diff = cv2.absdiff(a, b)
     return float(np.count_nonzero(diff > pixel_threshold)) / diff.size
 
@@ -51,7 +56,7 @@ def _changed_ratio(a: np.ndarray, b: np.ndarray, pixel_threshold: float) -> floa
 def signatures_differ(a: np.ndarray, b: np.ndarray, pixel_threshold: float, area_ratio: float = 0.02) -> bool:
     """True if two frame_signatures differ by more than `pixel_threshold`
     over more than `area_ratio` of the frame."""
-    return _changed_ratio(a, b, pixel_threshold) > area_ratio
+    return changed_ratio(a, b, pixel_threshold) > area_ratio
 
 
 class MotionDetector:
@@ -95,7 +100,7 @@ class MotionDetector:
             self._background = signature
             return False
 
-        is_motion = _changed_ratio(signature, self._background, self.pixel_threshold) > self.area_ratio
+        is_motion = changed_ratio(signature, self._background, self.pixel_threshold) > self.area_ratio
         if not is_motion:
             cv2.accumulateWeighted(signature, self._background, self.background_alpha)
         return is_motion

@@ -46,6 +46,7 @@ game's rules state.
 """
 from __future__ import annotations
 
+import logging
 from collections import deque
 from collections.abc import Callable
 from enum import StrEnum, auto
@@ -63,10 +64,12 @@ from ..rectification import rectify_keep_frame
 from .detector import LudoDetector
 from .dice import pick_dice_value
 from .models import DiceObservation, LudoBoardSnapshot
-from .motion import DEFAULT_BLUR_KERNEL, DEFAULT_DOWNSCALE_SIZE, MotionDetector, frame_signature, signatures_differ
+from .motion import DEFAULT_BLUR_KERNEL, DEFAULT_DOWNSCALE_SIZE, MotionDetector, changed_ratio, frame_signature
 from .pieces import assign_pieces
 from .track import load_track_cells
 from .visualize import build_boxes_image, draw_cells, draw_piece_detections
+
+logger = logging.getLogger(__name__)
 
 RectifyFn = Callable[[np.ndarray, dict], tuple[np.ndarray, tuple[int, int, int, int]] | tuple[None, None]]
 
@@ -241,17 +244,33 @@ class RollDetector:
         turn: Color,
         expected_pieces: list[Piece],
     ) -> LudoBoardSnapshot | None:
-        value, _confidence, dice_detection = stable
+        value, confidence, dice_detection = stable
         cells = load_track_cells(self.board_config, board_rect)
         pieces, piece_observations = assign_pieces(
             self.detector.pieces(detections), cells, self.entry_offsets, self.num_shared_steps
         )
 
         signature = frame_signature(rectified, self.downscale_size, self.blur_kernel)
-        is_new_frame = self._last_confirmed_signature is None or signatures_differ(
-            signature, self._last_confirmed_signature, self.pixel_diff_threshold, self.pixel_diff_area_ratio
-        )
+        if self._last_confirmed_signature is None:
+            is_new_frame = True
+            ratio = None
+        else:
+            ratio = changed_ratio(signature, self._last_confirmed_signature, self.pixel_diff_threshold)
+            is_new_frame = ratio > self.pixel_diff_area_ratio
         pieces_untouched = _pieces_match(pieces, expected_pieces)
+
+        logger.debug(
+            "_confirm: candidate die=%d (confidence=%.3f) -- is_new_frame=%s "
+            "(changed_ratio=%s, threshold=%.4f), pieces_untouched=%s",
+            value, confidence, is_new_frame,
+            "n/a (no prior confirmed roll)" if ratio is None else f"{ratio:.4f}",
+            self.pixel_diff_area_ratio, pieces_untouched,
+        )
+        if not pieces_untouched:
+            logger.debug(
+                "_confirm: pieces mismatch -- detected=%s expected=%s",
+                sorted((p.color, p.pos) for p in pieces), sorted((p.color, p.pos) for p in expected_pieces),
+            )
 
         # Whether this settles as Valid or Invalid, the roll-detection
         # cycle is over either way -- reset to watch for the next one.
@@ -260,9 +279,19 @@ class RollDetector:
         self.motion.reset()
 
         if not (is_new_frame and pieces_untouched):
+            logger.debug(
+                "_confirm: rejecting die=%d as Invalid (%s) -- back to Roll Detection",
+                value,
+                ", ".join(
+                    reason for reason, failed in (
+                        ("not a new frame", not is_new_frame), ("pieces moved", not pieces_untouched),
+                    ) if failed
+                ),
+            )
             return None  # Invalid -> back to Roll Detection
 
         self._last_confirmed_signature = signature
+        logger.debug("_confirm: confirmed die=%d as a new roll", value)
         board_state = BoardState(pieces=pieces, dice=value, turn=turn, timestamp=_time())
         return LudoBoardSnapshot(
             board_state=board_state,
