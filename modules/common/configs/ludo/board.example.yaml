@@ -14,6 +14,25 @@ aruco:
   # No specific order needed, will be determined based on their
   # actual position in the raw image
   corner_marker_ids: [1, 0, 4, 2]
+  # How many consecutive corner-detection misses (e.g. a hand briefly
+  # occluding a marker) CornerTracker tolerates before discarding its
+  # cached corner hint (the last known position of all 4 markers) and
+  # requiring a from-scratch search to re-establish it -- see
+  # perception.rectification.aruco.CornerTracker. Higher tolerates longer
+  # occlusions without losing the hint; lower re-searches from scratch
+  # sooner after the camera or board itself actually moves. Optional --
+  # defaults to DEFAULT_MAX_CONSECUTIVE_MISSES if omitted.
+  max_consecutive_misses: 3
+  # How many calls CornerTracker waits after an expensive multi-scale full
+  # sweep still failed to find all 4 markers before trying another sweep,
+  # rather than repeating it (and paying its ~1s+ cost) on every single
+  # frame while a marker stays genuinely out of view. Cheap ROI-only
+  # checks (using the cached hint above) still run every call in between;
+  # only the expensive sweep itself is paused. Higher saves more compute
+  # during a long occlusion at the cost of noticing a reappeared marker
+  # a bit later; 0 disables backoff (always sweep immediately). Optional
+  # -- defaults to DEFAULT_FULL_SWEEP_BACKOFF if omitted.
+  full_sweep_backoff: 5
 
 rectification:
   # [width, height] in pixels of the board's own region in the rectified

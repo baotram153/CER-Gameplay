@@ -15,7 +15,7 @@ import yaml
 from common.constants import Color
 from common.type import BoardState
 
-from ..rectification import BoardRectifier
+from ..rectification import DEFAULT_FULL_SWEEP_BACKOFF, DEFAULT_MAX_CONSECUTIVE_MISSES, BoardRectifier
 from .detector import LudoDetector
 from .dice import pick_dice_value
 from .models import DiceObservation, LudoBoardSnapshot
@@ -51,7 +51,11 @@ class LudoStatePipeline:
         # repeat calls (see its docstring). A one-off caller with no
         # "previous frame" to reuse should use rectify_keep_frame directly
         # instead.
-        self._rectifier = BoardRectifier()
+        aruco_cfg = self.board_config["aruco"]
+        self._rectifier = BoardRectifier(
+            max_consecutive_misses=aruco_cfg.get("max_consecutive_misses", DEFAULT_MAX_CONSECUTIVE_MISSES),
+            full_sweep_backoff=aruco_cfg.get("full_sweep_backoff", DEFAULT_FULL_SWEEP_BACKOFF),
+        )
 
         self.entry_offsets: dict[Color, int] = {
             Color(name): offset for name, offset in self.board_config["entry_offsets"].items()

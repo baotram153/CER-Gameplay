@@ -17,6 +17,15 @@ CORNER_ORDER = ("top_left", "top_right", "bottom_right", "bottom_left")
 # Auto-Labeling's src/autolabeling/rectification/aruco.py.
 DETECTION_SCALES = (1.0, 0.75, 1.5, 0.5, 2.0)
 
+# How many consecutive detect_corner_markers misses CornerTracker tolerates
+# before discarding its cached corner hint -- see CornerTracker's docstring.
+DEFAULT_MAX_CONSECUTIVE_MISSES = 3
+
+# How many calls CornerTracker waits after a full multi-scale sweep still
+# didn't find all 4 markers before trying another one -- see
+# CornerTracker's docstring and `full_sweep` below.
+DEFAULT_FULL_SWEEP_BACKOFF = 5
+
 # Search radius (pixels, at native resolution) around a corner's previous
 # position tried by `previous_corners` before falling back to the full
 # multi-scale sweep. `previous_corners` stores each marker's OUTWARD
@@ -67,6 +76,7 @@ def detect_corner_markers(
     dictionary: str,
     corner_marker_ids: list[int],
     previous_corners: dict[str, np.ndarray] | None = None,
+    full_sweep: bool = True,
 ) -> dict[str, np.ndarray] | None:
     """Detect the 4 ArUco markers that mark the board's corners.
 
@@ -96,6 +106,16 @@ def detect_corner_markers(
     falls through to the exact same full sweep as if no hint were given,
     so it can only add a small amount of cost, never reduce detection
     robustness.
+
+    `full_sweep` (default True): whether to run the multi-scale sweep at
+    all when the ROI fast path (or no `previous_corners`) doesn't already
+    find all 4. Set False to skip it and return None immediately instead
+    -- CornerTracker uses this to back off from retrying the expensive
+    sweep on literally every frame while a marker stays genuinely missing
+    (e.g. a hand resting near one corner for several seconds): once one
+    sweep has already failed to find it, an identical sweep a fraction of
+    a second later is very unlikely to succeed either, so it's cheaper to
+    skip a few calls and try again than to pay full price every time.
 
     Returns a dict mapping each name in CORNER_ORDER to that marker's outward
     image corner, or None if the 4 corner markers weren't all found.
@@ -139,23 +159,29 @@ def detect_corner_markers(
             len(id_to_corners), len(corner_marker_ids),
         )
 
-    for scale in DETECTION_SCALES:
-        if all(marker_id in id_to_corners for marker_id in corner_marker_ids):
-            break
-        scaled_gray = gray if scale == 1.0 else cv2.resize(
-            gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
-        )
-        corners, ids, _ = detector.detectMarkers(scaled_gray)
-        found_this_scale = 0
-        if ids is not None:
-            for marker_id, corner_pts in zip(ids.flatten(), corners):
-                marker_id = int(marker_id)
-                if marker_id in corner_marker_ids and marker_id not in id_to_corners:
-                    id_to_corners[marker_id] = corner_pts.reshape(4, 2) / scale
-                    found_this_scale += 1
+    if full_sweep:
+        for scale in DETECTION_SCALES:
+            if all(marker_id in id_to_corners for marker_id in corner_marker_ids):
+                break
+            scaled_gray = gray if scale == 1.0 else cv2.resize(
+                gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+            )
+            corners, ids, _ = detector.detectMarkers(scaled_gray)
+            found_this_scale = 0
+            if ids is not None:
+                for marker_id, corner_pts in zip(ids.flatten(), corners):
+                    marker_id = int(marker_id)
+                    if marker_id in corner_marker_ids and marker_id not in id_to_corners:
+                        id_to_corners[marker_id] = corner_pts.reshape(4, 2) / scale
+                        found_this_scale += 1
+            logger.debug(
+                "detect_corner_markers: full-frame sweep at scale=%.2f found %d new marker(s), %d/%d total",
+                scale, found_this_scale, len(id_to_corners), len(corner_marker_ids),
+            )
+    elif len(id_to_corners) < len(corner_marker_ids):
         logger.debug(
-            "detect_corner_markers: full-frame sweep at scale=%.2f found %d new marker(s), %d/%d total",
-            scale, found_this_scale, len(id_to_corners), len(corner_marker_ids),
+            "detect_corner_markers: %d/%d found via ROI, skipping the full sweep this frame (backoff)",
+            len(id_to_corners), len(corner_marker_ids),
         )
 
     found_ids = [marker_id for marker_id in corner_marker_ids if marker_id in id_to_corners]
@@ -195,13 +221,37 @@ class CornerTracker:
     the corners found by the last successful call and feeds them back in as
     `previous_corners`, so repeated calls against a physically fixed
     camera+board (the common case across a gameplay session) skip most of
-    the cost of the full multi-scale sweep most of the time. A failed call
-    (previous_corners didn't pan out and the fallback sweep also missed)
-    clears the memory, so the next call falls back to a from-scratch search
-    rather than keep retrying a stale hint indefinitely."""
+    the cost of the full multi-scale sweep most of the time.
 
-    def __init__(self) -> None:
+    Two independent tolerances soften how it reacts to a failed call
+    (previous_corners didn't pan out and the fallback sweep also missed --
+    e.g. a hand passing over the board and occluding a marker):
+
+    - The cached hint itself is NOT discarded right away: on a physically
+      fixed rig the corners are still almost certainly right where they
+      were, so it's kept and retried for up to `max_consecutive_misses`
+      misses in a row before being dropped.
+    - The expensive full multi-scale sweep backs off separately: once one
+      sweep has failed to find a marker, an identical sweep a fraction of
+      a second later is very unlikely to succeed either (the marker is
+      still genuinely out of view, not merely mislocated), so the next
+      `full_sweep_backoff` calls skip it entirely -- returning None as
+      soon as the cheap ROI check alone doesn't complete 4/4 -- before
+      trying a full sweep again. Without this, a marker occluded for
+      several seconds (a hand lingering near the dice bowl during a roll,
+      say) would force a ~1s+ full sweep on every single one of those
+      frames for no better odds of success."""
+
+    def __init__(
+        self,
+        max_consecutive_misses: int = DEFAULT_MAX_CONSECUTIVE_MISSES,
+        full_sweep_backoff: int = DEFAULT_FULL_SWEEP_BACKOFF,
+    ) -> None:
         self._last_corners: dict[str, np.ndarray] | None = None
+        self._max_consecutive_misses = max_consecutive_misses
+        self._full_sweep_backoff = full_sweep_backoff
+        self._miss_streak = 0
+        self._full_sweep_cooldown = 0
 
     def detect(
         self, image: np.ndarray, dictionary: str, corner_marker_ids: list[int]
@@ -210,8 +260,32 @@ class CornerTracker:
             "CornerTracker.detect: %s previous corners hint",
             "using" if self._last_corners else "no",
         )
+        do_full_sweep = self._full_sweep_cooldown <= 0
         result = detect_corner_markers(
-            image, dictionary, corner_marker_ids, previous_corners=self._last_corners
+            image, dictionary, corner_marker_ids, previous_corners=self._last_corners, full_sweep=do_full_sweep
         )
-        self._last_corners = result
+        if result is not None:
+            self._last_corners = result
+            self._miss_streak = 0
+            self._full_sweep_cooldown = 0
+            return result
+
+        self._miss_streak += 1
+        if self._miss_streak >= self._max_consecutive_misses:
+            logger.debug(
+                "CornerTracker.detect: %d consecutive miss(es) (max_consecutive_misses=%d) -- "
+                "dropping the stale corner hint",
+                self._miss_streak, self._max_consecutive_misses,
+            )
+            self._last_corners = None
+
+        if do_full_sweep:
+            logger.debug(
+                "CornerTracker.detect: full sweep still missed a marker -- backing off for the next "
+                "%d call(s)",
+                self._full_sweep_backoff,
+            )
+            self._full_sweep_cooldown = self._full_sweep_backoff
+        else:
+            self._full_sweep_cooldown -= 1
         return result

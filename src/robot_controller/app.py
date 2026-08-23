@@ -21,7 +21,7 @@ from gameplay.move_selection import action_planner_move_selector
 from gameplay.phase import GamePhase
 from gameplay.result import GameResult
 from perception.ludo import LudoStatePipeline, RollDetector
-from perception.rectification import BoardRectifier
+from perception.rectification import DEFAULT_FULL_SWEEP_BACKOFF, DEFAULT_MAX_CONSECUTIVE_MISSES, BoardRectifier
 from reasoning.game_engine import GameState
 
 from .adapters.manipulation_adapter import ConsoleManipulationAdapter
@@ -119,13 +119,17 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
     # and capture_roll() are never hot at the same time (different
     # gameplay phases), so a cold corner-detection pass when switching
     # between them is a one-off cost, not a steady-state one.
+    aruco_cfg = pipeline.board_config["aruco"]
     roll_detector = RollDetector.from_config_file(
         config.perception.roll_detection_config,
         detector=pipeline.detector,
         board_config=pipeline.board_config,
         entry_offsets=pipeline.entry_offsets,
         num_shared_steps=pipeline.num_shared_steps,
-        rectify=BoardRectifier().rectify_keep_frame,
+        rectify=BoardRectifier(
+            max_consecutive_misses=aruco_cfg.get("max_consecutive_misses", DEFAULT_MAX_CONSECUTIVE_MISSES),
+            full_sweep_backoff=aruco_cfg.get("full_sweep_backoff", DEFAULT_FULL_SWEEP_BACKOFF),
+        ).rectify_keep_frame,
     )
 
     perception = LudoPerceptionAdapter(

@@ -6,7 +6,7 @@ from typing import Callable
 
 import numpy as np
 
-from .aruco import CornerTracker, detect_corner_markers
+from .aruco import DEFAULT_FULL_SWEEP_BACKOFF, DEFAULT_MAX_CONSECUTIVE_MISSES, CornerTracker, detect_corner_markers
 from .homography import compute_homography, fit_to_frame, warp
 
 logger = logging.getLogger(__name__)
@@ -100,8 +100,14 @@ class BoardRectifier:
     plain module-level functions for one-off calls with no "last frame" to
     reuse (calibration tools, dataset prep)."""
 
-    def __init__(self) -> None:
-        self._tracker = CornerTracker()
+    def __init__(
+        self,
+        max_consecutive_misses: int = DEFAULT_MAX_CONSECUTIVE_MISSES,
+        full_sweep_backoff: int = DEFAULT_FULL_SWEEP_BACKOFF,
+    ) -> None:
+        self._tracker = CornerTracker(
+            max_consecutive_misses=max_consecutive_misses, full_sweep_backoff=full_sweep_backoff
+        )
 
     def rectify_image(self, image: np.ndarray, board_config: dict) -> np.ndarray | None:
         return rectify_image(image, board_config, corner_detector=self._tracker.detect)
