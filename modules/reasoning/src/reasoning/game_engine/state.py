@@ -1,4 +1,6 @@
-"""Turn-manager: whose turn it is, winners, and the extra-turn-on-6 mechanic."""
+"""Turn-manager: whose turn it is, winners, and the extra-turn-on-1-or-6
+mechanic (the same two rolls that let a piece leave the yard -- see
+yard.py's YARD_ENTRY_ROLLS -- grant another roll too, in standard rules)."""
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -8,9 +10,16 @@ from common.constants import Color
 from common.type import BoardState, Move, Piece
 
 from .apply import apply_move
+from .constants import YARD_ENTRY_ROLLS
 from .models import TurnResult
 from .moves import legal_moves as _legal_moves
 from .win import has_player_won
+
+# The rolls that grant an extra turn happen to be the exact same two rolls
+# that let a piece leave the yard -- not a coincidence, this is standard
+# Ludo's actual ruleset, so this is deliberately the same constant rather
+# than a second, separately-configured one.
+EXTRA_TURN_ROLLS = YARD_ENTRY_ROLLS
 
 # An arbitrary in-range placeholder, needed before any roll has occurred.
 _PLACEHOLDER_DICE = 2
@@ -74,7 +83,7 @@ class GameState:
         if not options:
             if move is not None:
                 raise ValueError("no legal moves this turn; call with move=None to skip")
-            extra_turn = die == 6
+            extra_turn = die in EXTRA_TURN_ROLLS
             self._advance_turn(extra_turn)
             return TurnResult(move=None, skipped=True, extra_turn=extra_turn, winner=None)
 
@@ -87,7 +96,7 @@ class GameState:
             winner = move.piece.color
             self._winners.append(winner)
 
-        extra_turn = die == 6
+        extra_turn = die in EXTRA_TURN_ROLLS
         self._advance_turn(extra_turn)
         return TurnResult(move=move, skipped=False, extra_turn=extra_turn, winner=winner)
 

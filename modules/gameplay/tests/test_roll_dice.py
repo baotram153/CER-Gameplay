@@ -6,7 +6,7 @@ from gameplay.phase import GamePhase
 from gameplay.player import PlayerType
 from reasoning.game_engine import GameState
 
-from support import ScriptedManipulation
+from support import ScriptedManipulation, ScriptedPerception
 
 ENTRY_OFFSETS = {Color.RED: 0, Color.GREEN: 15, Color.YELLOW: 30, Color.BLUE: 45}
 NUM_SHARED_STEPS = 60
@@ -24,8 +24,10 @@ def _context() -> GameplayContext:
 def test_rolls_and_moves_to_wait_for_dice():
     ctx = _context()
     manipulation = ScriptedManipulation()
+    perception = ScriptedPerception(script=[])
 
-    next_phase = roll_dice.run(ctx, manipulation)
+    next_phase = roll_dice.run(ctx, manipulation, perception)
 
     assert next_phase == GamePhase.WAIT_FOR_DICE
     assert manipulation.rolls == 1
+    assert perception.expect_new_roll_calls == 1

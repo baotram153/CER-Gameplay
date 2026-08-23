@@ -48,6 +48,11 @@ perception:
   # stale die reading left over from a previous turn) instead of trusting
   # a single noisy snapshot.
   roll_detection_config: modules/perception/configs/ludo/roll_detection.yaml
+  # Path to MovementDetector's motion/stability/validity hyperparameters --
+  # see modules/perception/configs/ludo/movement_detection.example.yaml.
+  # Used by Wait for children's movement to confirm a settled, genuinely
+  # NEW piece move instead of trusting a single noisy snapshot.
+  movement_detection_config: modules/perception/configs/ludo/movement_detection.yaml
   # If set, every capture() attempt writes its rectified frame + a
   # boxes-drawn copy + a state JSON here (see LudoStatePipeline.run). Handy
   # for debugging a live run; leave null to skip the extra disk I/O.

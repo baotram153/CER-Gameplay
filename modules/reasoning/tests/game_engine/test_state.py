@@ -24,17 +24,24 @@ def test_new_game_starts_all_pieces_yarded():
     assert game.current_turn == Color.RED
 
 
-def test_die_six_grants_extra_turn_after_a_move():
+@pytest.mark.parametrize("die", [1, 6])
+def test_yard_entry_roll_grants_extra_turn_after_a_move(die):
     game = GameState.new_game(PLAYERS, ENTRY_OFFSETS, NUM_SHARED_STEPS)
-    (move,) = game.legal_moves(6)
-    result = game.play_turn(6, move)
+    (move,) = game.legal_moves(die)
+    result = game.play_turn(die, move)
     assert result.extra_turn is True
     assert game.current_turn == Color.RED
 
 
-def test_die_six_grants_extra_turn_even_on_skip():
+def test_yard_entry_roll_grants_extra_turn_even_on_skip():
     # All 4 red pieces already active and every one overshoots on a 6 ->
-    # no legal moves at all, yet the extra turn still applies.
+    # no legal moves at all, yet the extra turn still applies. (Not
+    # parametrized over die=1 too: with the smallest possible roll,
+    # forcing every active piece into "no legal move" needs a much more
+    # contrived own-color-blocking setup than overshoot-on-6 does -- the
+    # extra-turn-after-a-real-move case above already covers 1 and 6
+    # identically, which is what the die==6-only bug this fixes was
+    # actually about.)
     board = _board({Color.RED: [55, 56, 57, 58]})
     game = GameState(PLAYERS, board, ENTRY_OFFSETS, NUM_SHARED_STEPS)
     assert game.legal_moves(6) == []
@@ -44,7 +51,7 @@ def test_die_six_grants_extra_turn_even_on_skip():
     assert game.current_turn == Color.RED
 
 
-def test_non_six_advances_to_next_active_player():
+def test_non_extra_turn_roll_advances_to_next_active_player():
     board = _board({Color.RED: [10, 0, 0, 0]})
     game = GameState(PLAYERS, board, ENTRY_OFFSETS, NUM_SHARED_STEPS)
     (move,) = game.legal_moves(3)
@@ -53,7 +60,7 @@ def test_non_six_advances_to_next_active_player():
     assert game.current_turn == Color.GREEN
 
 
-def test_skipped_turn_still_advances_when_not_a_six():
+def test_skipped_turn_still_advances_when_not_an_extra_turn_roll():
     board = _board({})
     game = GameState(PLAYERS, board, ENTRY_OFFSETS, NUM_SHARED_STEPS)
     assert game.legal_moves(2) == []

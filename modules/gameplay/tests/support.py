@@ -16,12 +16,14 @@ from common.type import BoardState, Move, Piece, ValidationResult
 @dataclass
 class ScriptedPerception:
     """Returns each entry of `script` in turn on successive capture()/
-    capture_roll() calls (both draw from the same script/calls sequence,
-    since no test currently exercises both on one instance); a None entry
-    simulates an unreadable frame or an unconfirmed roll."""
+    capture_roll()/capture_movement() calls (all three draw from the same
+    script/calls sequence, since no test currently exercises more than one
+    on a single instance); a None entry simulates an unreadable frame or
+    an unconfirmed roll/move."""
 
     script: list[BoardState | None]
     calls: list[Color] = field(default_factory=list)
+    expect_new_roll_calls: int = 0
 
     def capture(self, turn: Color) -> BoardState | None:
         self.calls.append(turn)
@@ -29,6 +31,12 @@ class ScriptedPerception:
 
     def capture_roll(self, turn: Color, expected_pieces: list[Piece]) -> BoardState | None:
         return self.capture(turn)
+
+    def capture_movement(self, turn: Color, expected_dice: int) -> BoardState | None:
+        return self.capture(turn)
+
+    def expect_new_roll(self) -> None:
+        self.expect_new_roll_calls += 1
 
 
 @dataclass

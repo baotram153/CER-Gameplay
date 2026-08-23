@@ -64,6 +64,12 @@ class PerceptionConfig:
     # Wait for dice to confirm a genuinely new, settled roll instead of
     # trusting a single noisy snapshot (see gameplay.wait_for_dice).
     roll_detection_config: Path
+    # See modules/perception/configs/ludo/movement_detection.example.yaml
+    # -- MovementDetector's motion/stability/validity hyperparameters,
+    # RollDetector's mirror image for piece movement instead of dice, used
+    # by Wait for children's movement to confirm a genuinely new, settled
+    # move instead of trusting a single noisy snapshot.
+    movement_detection_config: Path
     visualize_dir: Path | None
 
 
@@ -229,6 +235,7 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
     perception = PerceptionConfig(
         inference_config=_resolve_path(perception_raw["inference_config"]),
         roll_detection_config=_resolve_path(perception_raw["roll_detection_config"]),
+        movement_detection_config=_resolve_path(perception_raw["movement_detection_config"]),
         visualize_dir=_resolve_path(visualize_dir_raw) if visualize_dir_raw else None,
     )
 

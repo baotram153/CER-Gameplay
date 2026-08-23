@@ -49,19 +49,61 @@ def test_confirmed_move_advances_to_update_game_state():
     ctx = _context()
     manipulation = ScriptedManipulation(execute_ok=True)
     expected = apply_move(ctx.game.board, ctx.legal_moves[0])
-    perception = ScriptedPerception(script=[expected])
+    # 3 agreeing reads (the stable-read majority threshold) -- the extra
+    # 2 in the script are never reached since _capture_stable_board
+    # returns as soon as a config hits required_matches.
+    perception = ScriptedPerception(script=[expected, expected, expected, expected, expected])
 
     next_phase = robot_movement.run(ctx, manipulation, perception, first_legal_move)
 
     assert next_phase == GamePhase.UPDATE_GAME_STATE
     assert ctx.chosen_move == ctx.legal_moves[0]
+    assert len(perception.calls) == 3
+
+
+def test_a_single_boundary_flip_self_corrects_via_the_majority_read():
+    # One ambiguous read lands on the wrong side of a cell boundary, but
+    # the majority of re-reads agree on the correct (expected) result --
+    # this should still confirm, instead of one bad frame sending it to
+    # Recovery like it would have before the stable-read majority vote.
+    ctx = _context()
+    manipulation = ScriptedManipulation(execute_ok=True)
+    expected = apply_move(ctx.game.board, ctx.legal_moves[0])
+    boundary_flip = _board({Color.GREEN: [3, 0, 0, 0]})
+    perception = ScriptedPerception(script=[boundary_flip, expected, expected, expected])
+
+    next_phase = robot_movement.run(ctx, manipulation, perception, first_legal_move)
+
+    assert next_phase == GamePhase.UPDATE_GAME_STATE
+
+
+def test_an_uninvolved_colors_noise_does_not_block_confirmation():
+    # RED (not the mover) reads differently on every attempt -- a stray/
+    # misdetected piece on a color this move never touches -- while GREEN
+    # (the actual mover) reads correctly and consistently every time.
+    # Restricting the vote key to the mover's own color means RED's noise
+    # never even enters it, so all 3 reads count as the SAME configuration
+    # despite RED disagreeing every time.
+    ctx = _context()
+    manipulation = ScriptedManipulation(execute_ok=True)
+    noisy_1 = _board({Color.GREEN: [4, 0, 0, 0], Color.RED: [7, 0, 0, 0]})
+    noisy_2 = _board({Color.GREEN: [4, 0, 0, 0], Color.RED: [12, 0, 0, 0]})
+    noisy_3 = _board({Color.GREEN: [4, 0, 0, 0], Color.RED: [20, 0, 0, 0]})
+    perception = ScriptedPerception(script=[noisy_1, noisy_2, noisy_3])
+
+    next_phase = robot_movement.run(ctx, manipulation, perception, first_legal_move)
+
+    assert next_phase == GamePhase.UPDATE_GAME_STATE
+    assert len(perception.calls) == 3
 
 
 def test_mismatching_post_move_read_goes_to_recovery():
     ctx = _context()
     manipulation = ScriptedManipulation(execute_ok=True)
     unrelated = _board({Color.GREEN: [1, 0, 0, 0]})
-    perception = ScriptedPerception(script=[unrelated])
+    # A STABLE (repeatedly agreeing) but wrong reading -- a genuine
+    # mismatch, not just an ambiguous one-off, should still go to Recovery.
+    perception = ScriptedPerception(script=[unrelated, unrelated, unrelated])
 
     next_phase = robot_movement.run(ctx, manipulation, perception, first_legal_move)
 
@@ -72,8 +114,24 @@ def test_mismatching_post_move_read_goes_to_recovery():
 def test_unreadable_post_move_frame_goes_to_recovery():
     ctx = _context()
     manipulation = ScriptedManipulation(execute_ok=True)
-    perception = ScriptedPerception(script=[None])
+    perception = ScriptedPerception(script=[None, None, None, None, None])
 
     next_phase = robot_movement.run(ctx, manipulation, perception, first_legal_move)
 
     assert next_phase == GamePhase.RECOVERY
+
+
+def test_persistent_disagreement_never_reaches_a_majority_goes_to_recovery():
+    # No single configuration ever accumulates enough votes within the
+    # attempt budget -- unlike the boundary-flip case, this never settles.
+    ctx = _context()
+    manipulation = ScriptedManipulation(execute_ok=True)
+    a = _board({Color.GREEN: [1, 0, 0, 0]})
+    b = _board({Color.GREEN: [2, 0, 0, 0]})
+    c = _board({Color.GREEN: [3, 0, 0, 0]})
+    perception = ScriptedPerception(script=[a, b, c, a, b])
+
+    next_phase = robot_movement.run(ctx, manipulation, perception, first_legal_move)
+
+    assert next_phase == GamePhase.RECOVERY
+    assert len(perception.calls) == 5

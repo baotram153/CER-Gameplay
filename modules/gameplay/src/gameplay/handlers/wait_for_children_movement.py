@@ -11,7 +11,7 @@ from ..validation import match_legal_move
 
 def run(ctx: GameplayContext, perception: PerceptionPort) -> GamePhase:
     ctx.movement_attempts += 1
-    after = perception.capture(ctx.game.current_turn)
+    after = perception.capture_movement(ctx.game.current_turn, ctx.die)
     if after is None:
         return GamePhase.WAIT_FOR_CHILDREN_MOVEMENT
 

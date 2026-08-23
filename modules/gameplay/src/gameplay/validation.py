@@ -14,6 +14,17 @@ from common.type import BoardState, Move
 from reasoning.game_engine import apply_move
 
 
+def pieces_key(board: BoardState, colors: set[Color] | None = None) -> list[tuple[str, int]]:
+    """Sorted (color, pos) pairs for `board`'s pieces, restricted to
+    `colors` if given (None = all 4). The only piece of state
+    `boards_pieces_equal` actually compares -- exposed separately so
+    other callers needing the identical key (e.g. voting across several
+    repeated reads of the same physical board) don't duplicate the sort
+    logic."""
+    pieces = board.pieces if colors is None else [p for p in board.pieces if p.color in colors]
+    return sorted((piece.color, piece.pos) for piece in pieces)
+
+
 def boards_pieces_equal(a: BoardState, b: BoardState, colors: set[Color] | None = None) -> bool:
     """True iff `a` and `b` have the same (color, pos) multiset of pieces,
     ignoring dice/turn/timestamp.
@@ -27,11 +38,7 @@ def boards_pieces_equal(a: BoardState, b: BoardState, colors: set[Color] | None 
     deterministically by `apply_move` from the chosen `Move`, not read back
     from perception, so they don't need to be re-confirmed here.
     """
-    def key(board: BoardState) -> list[tuple[str, int]]:
-        pieces = board.pieces if colors is None else [p for p in board.pieces if p.color in colors]
-        return sorted((piece.color, piece.pos) for piece in pieces)
-
-    return key(a) == key(b)
+    return pieces_key(a, colors) == pieces_key(b, colors)
 
 
 def diff_matches_move(before: BoardState, after: BoardState, move: Move) -> bool:

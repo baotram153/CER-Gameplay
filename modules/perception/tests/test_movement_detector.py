@@ -14,7 +14,7 @@ BOARD_CONFIG = {
     # tests -- assign_pieces has only one candidate cell to pick.
     "cells": [{"id": "track_01", "kind": "track", "shared_step": 1, "center": [0.5, 0.5]}]
 }
-CLASS_NAMES = {0: "piece_red", 1: "dice_3"}
+CLASS_NAMES = {0: "piece_red", 1: "dice_3", 2: "piece_green", 3: "piece_blue"}
 MOVEMENT_DETECTION_CONFIG_PATH = (
     Path(__file__).resolve().parents[1] / "configs" / "ludo" / "movement_detection.example.yaml"
 )
@@ -28,8 +28,8 @@ def _fake_rectify(raw_frame: np.ndarray, board_config: dict):
     return raw_frame, (0, 0, raw_frame.shape[1], raw_frame.shape[0])
 
 
-def _piece_detection(confidence: float = 0.9) -> Detection:
-    return Detection(bbox=(48, 90, 52, 100), center=(50, 95), class_id=0, confidence=confidence)
+def _piece_detection(class_id: int = 0, confidence: float = 0.9) -> Detection:
+    return Detection(bbox=(48, 90, 52, 100), center=(50, 95), class_id=class_id, confidence=confidence)
 
 
 def _dice_detection(confidence: float = 0.9) -> Detection:
@@ -109,14 +109,39 @@ def test_full_cycle_confirms_a_stable_new_movement():
 
 
 def test_disagreeing_readings_never_settle():
-    moved = [_piece_detection(), _dice_detection()]
-    still_yarded = [_dice_detection()]  # the piece "disappears" each other frame -> position key keeps flipping
-    frames = [moved, still_yarded, moved, still_yarded, moved, still_yarded]
+    # Three genuinely different piece configurations cycle with no
+    # majority ever reaching required_matches within the lookback window
+    # -- the loosened N-of-M stability rule tolerates occasional
+    # misses/gaps (see test_occasional_missed_detections_still_settle
+    # below), but must still refuse to settle on persistent, real
+    # disagreement.
+    red_present = [_piece_detection(class_id=0), _dice_detection()]
+    green_present = [_piece_detection(class_id=2), _dice_detection()]
+    blue_present = [_piece_detection(class_id=3), _dice_detection()]
+    frames = [red_present, green_present, blue_present] * 3  # each config appears at most twice per 6-frame window
     detector = _movement_detector(frames=frames)
 
     detector.step(_frame(50), Color.RED, expected_dice=3)  # baseline
     for _ in frames:
         assert detector.step(_frame(220), Color.RED, expected_dice=3) is None
+
+
+def test_occasional_missed_detections_still_settle():
+    # A piece reading that flickers between found and not-found should
+    # still settle once enough matching reads accumulate, instead of
+    # never confirming just because a few frames in between missed the
+    # piece class entirely.
+    stable_reading = [_piece_detection(), _dice_detection()]
+    missed_reading = [_dice_detection()]  # piece not detected -> defaults to "still yarded", a DIFFERENT key
+    frames = [stable_reading, missed_reading, stable_reading, missed_reading, stable_reading]
+    detector = _movement_detector(frames=frames)
+
+    detector.step(_frame(50), Color.RED, expected_dice=3)  # baseline
+    results = [detector.step(_frame(220), Color.RED, expected_dice=3) for _ in frames]
+
+    assert results[:-1] == [None, None, None, None]
+    assert results[-1] is not None
+    assert results[-1].board_state.dice == 3
 
 
 def test_repeating_the_exact_previous_confirmed_frame_is_invalid():
@@ -149,6 +174,46 @@ def test_dice_changed_invalidates_the_move():
     result = detector.step(_frame(220), Color.RED, expected_dice=5)
 
     assert result is None
+
+
+def test_an_invalid_confirm_retries_before_giving_up():
+    # The first _confirm attempt sees a dice mismatch (Invalid); the very
+    # next frame's expected_dice reflects the caller catching up -- with
+    # no fresh motion trigger in between, MovementDetector should retry
+    # _confirm on that next frame and succeed.
+    stable_reading = [_piece_detection(), _dice_detection()]  # dice reads as value 3
+    detector = _movement_detector(frames=[stable_reading, stable_reading, stable_reading, stable_reading])
+
+    detector.step(_frame(50), Color.RED, expected_dice=3)  # baseline
+    detector.step(_frame(220), Color.RED, expected_dice=3)  # 1st stability reading
+    detector.step(_frame(220), Color.RED, expected_dice=3)  # 2nd stability reading
+    first_attempt = detector.step(_frame(220), Color.RED, expected_dice=5)  # 3rd -> stable -> Invalid, retry
+    assert first_attempt is None
+
+    second_attempt = detector.step(_frame(220), Color.RED, expected_dice=3)  # still stable -> retry -> Valid
+    assert second_attempt is not None
+    assert second_attempt.board_state.dice == 3
+
+
+def test_persistent_invalid_confirm_eventually_gives_up_and_resets():
+    stable_reading = [_piece_detection(), _dice_detection()]  # dice reads as value 3
+    detector = _movement_detector(frames=[stable_reading] * 7, max_confirm_attempts=2)
+
+    detector.step(_frame(50), Color.RED, expected_dice=5)  # baseline
+    detector.step(_frame(220), Color.RED, expected_dice=5)  # 1st stability reading
+    detector.step(_frame(220), Color.RED, expected_dice=5)  # 2nd stability reading
+    assert detector.step(_frame(220), Color.RED, expected_dice=5) is None  # 3rd -> stable -> Invalid, attempt 1/2
+    assert detector.step(_frame(220), Color.RED, expected_dice=5) is None  # still stable -> Invalid, attempt 2/2 -> gives up
+
+    # Having given up, a whole fresh stability cycle (new motion trigger +
+    # window matching readings) is required.
+    assert detector.step(_frame(220), Color.RED, expected_dice=3) is None  # no motion vs. the frame before -> no-op
+    detector.step(_frame(90), Color.RED, expected_dice=3)  # motion -> 1st reading of a fresh cycle
+    detector.step(_frame(90), Color.RED, expected_dice=3)  # 2nd reading
+    result = detector.step(_frame(90), Color.RED, expected_dice=3)  # 3rd -> stable -> Valid this time
+
+    assert result is not None
+    assert result.board_state.dice == 3
 
 
 def test_unreadable_frame_during_stability_extends_the_window_without_crashing():

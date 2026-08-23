@@ -46,7 +46,7 @@ class GameplayEngine:
         )
         self._handlers: dict[GamePhase, Callable[[], GamePhase]] = {
             GamePhase.DETERMINE_NEXT_PLAYER: lambda: handlers.determine_next_player.run(self.context),
-            GamePhase.ROLL_DICE: lambda: handlers.roll_dice.run(self.context, self._manipulation),
+            GamePhase.ROLL_DICE: lambda: handlers.roll_dice.run(self.context, self._manipulation, self._perception),
             GamePhase.WAIT_FOR_DICE: lambda: handlers.wait_for_dice.run(self.context, self._perception),
             GamePhase.CHECK_LEGAL_MOVES: lambda: handlers.check_legal_moves.run(self.context),
             GamePhase.WAIT_FOR_CHILDREN_MOVEMENT: lambda: handlers.wait_for_children_movement.run(

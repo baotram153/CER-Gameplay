@@ -235,6 +235,26 @@ class RollDetector:
             rectify=rectify, active_colors=active_colors,
         )
 
+    def force_wait_for_stability(self) -> None:
+        """Skips Roll Detection's motion gate and jumps straight to Wait
+        for Stability, as if motion had just been detected.
+
+        For a CONTROLLED roll the caller already knows just happened (the
+        robot's own manipulation.roll_dice() action) rather than one to be
+        passively inferred by watching the camera, motion-gating doesn't
+        just add latency, it can wedge step() forever: by the time
+        Wait-for-dice's first frame arrives, the die has already tumbled
+        and settled and the hand that rolled it is already gone, so
+        MotionDetector's background captures that already-settled frame
+        as its baseline (nothing left to move against) and never sees
+        motion again. Call this right after the controlled roll action
+        completes, before the first step() call of that turn -- see
+        gameplay.ports.perception_port.PerceptionPort.expect_new_roll and
+        gameplay.handlers.roll_dice."""
+        self._phase = _Phase.WAIT_FOR_STABILITY
+        self._readings.clear()
+        self._confirm_attempts = 0
+
     def step(self, raw_frame: np.ndarray, turn: Color, expected_pieces: list[Piece]) -> LudoBoardSnapshot | None:
         """Feed one camera frame in. Returns a confirmed LudoBoardSnapshot
         once a new roll settles and passes both validity checks; None at

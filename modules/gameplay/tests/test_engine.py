@@ -84,7 +84,10 @@ def test_default_move_selector_uses_the_action_planner_heuristic():
 
     dice_reading = _board({Color.GREEN: [1, 58, 0, 0]}, turn=Color.GREEN, dice=2)
     after_move = _board({Color.GREEN: [1, 60, 0, 0]}, turn=Color.GREEN, dice=2)
-    perception = ScriptedPerception(script=[dice_reading, after_move])
+    # robot_movement.py now re-reads the post-move board a few times and
+    # requires a majority to agree (see _capture_stable_board) -- 3
+    # identical after_move entries satisfy that.
+    perception = ScriptedPerception(script=[dice_reading, after_move, after_move, after_move])
     manipulation = ScriptedManipulation()
 
     engine = GameplayEngine(game, ROLES, perception, manipulation)

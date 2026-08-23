@@ -10,6 +10,7 @@ from robot_controller.errors import CameraError
 
 _BOARD = BoardState(pieces=[Piece(color=c, pos=0) for c in Color for _ in range(4)], dice=3, turn=Color.GREEN, timestamp=0.0)
 _EXPECTED_PIECES = list(_BOARD.pieces)
+_EXPECTED_DICE = 3
 
 
 class _FakeSnapshot:
@@ -23,12 +24,32 @@ class _FakeRollDetector:
         self._result = result
         self._exc = exc
         self.calls = []
+        self.force_wait_for_stability_calls = 0
         # RollDetector's real debug side-channel -- see roll_detector.py.
         self.last_visualization = last_visualization
         self.last_rectified = last_rectified
 
     def step(self, frame, turn, expected_pieces):
         self.calls.append((frame, turn, expected_pieces))
+        if self._exc is not None:
+            raise self._exc
+        return self._result
+
+    def force_wait_for_stability(self) -> None:
+        self.force_wait_for_stability_calls += 1
+
+
+class _FakeMovementDetector:
+    def __init__(self, result=None, exc: Exception | None = None, last_visualization=None, last_rectified=None):
+        self._result = result
+        self._exc = exc
+        self.calls = []
+        # MovementDetector's real debug side-channel -- see movement_detector.py.
+        self.last_visualization = last_visualization
+        self.last_rectified = last_rectified
+
+    def step(self, frame, turn, expected_dice):
+        self.calls.append((frame, turn, expected_dice))
         if self._exc is not None:
             raise self._exc
         return self._result
@@ -125,6 +146,24 @@ def test_capture_roll_raises_without_a_configured_roll_detector():
         adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
 
 
+def test_expect_new_roll_raises_without_a_configured_roll_detector():
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline())
+
+    with pytest.raises(RuntimeError):
+        adapter.expect_new_roll()
+
+
+def test_expect_new_roll_delegates_to_the_roll_detector():
+    roll_detector = _FakeRollDetector()
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline(), roll_detector=roll_detector
+    )
+
+    adapter.expect_new_roll()
+
+    assert roll_detector.force_wait_for_stability_calls == 1
+
+
 def test_capture_roll_returns_none_when_no_frame_available():
     roll_detector = _FakeRollDetector()
     adapter = LudoPerceptionAdapter(
@@ -214,6 +253,114 @@ def test_capture_roll_shows_the_debug_window_with_last_rectified_when_no_visuali
     )
 
     adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
+
+    assert window.calls == [(frame, rectified)]
+
+
+def test_capture_movement_raises_without_a_configured_movement_detector():
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline())
+
+    with pytest.raises(RuntimeError):
+        adapter.capture_movement(Color.GREEN, _EXPECTED_DICE)
+
+
+def test_capture_movement_returns_none_when_no_frame_available():
+    movement_detector = _FakeMovementDetector()
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=None), pipeline=_FakePipeline(), movement_detector=movement_detector
+    )
+
+    assert adapter.capture_movement(Color.GREEN, _EXPECTED_DICE) is None
+    assert movement_detector.calls == []
+
+
+def test_capture_movement_returns_none_while_no_move_has_settled_yet():
+    movement_detector = _FakeMovementDetector(result=None)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline(), movement_detector=movement_detector
+    )
+
+    assert adapter.capture_movement(Color.GREEN, _EXPECTED_DICE) is None
+    assert movement_detector.calls[0][1] is Color.GREEN
+    assert movement_detector.calls[0][2] == _EXPECTED_DICE
+
+
+def test_capture_movement_returns_board_state_once_a_move_is_confirmed():
+    movement_detector = _FakeMovementDetector(result=_FakeSnapshot(_BOARD))
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline(), movement_detector=movement_detector
+    )
+
+    assert adapter.capture_movement(Color.GREEN, _EXPECTED_DICE) is _BOARD
+
+
+def test_capture_movement_returns_none_on_unexpected_movement_detector_error():
+    movement_detector = _FakeMovementDetector(exc=RuntimeError("detector blew up"))
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline(), movement_detector=movement_detector
+    )
+
+    assert adapter.capture_movement(Color.GREEN, _EXPECTED_DICE) is None
+
+
+def test_capture_movement_propagates_camera_error():
+    movement_detector = _FakeMovementDetector()
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(exc=CameraError("camera is gone")),
+        pipeline=_FakePipeline(),
+        movement_detector=movement_detector,
+    )
+
+    with pytest.raises(CameraError):
+        adapter.capture_movement(Color.GREEN, _EXPECTED_DICE)
+
+
+def test_capture_movement_feeds_the_detection_recorder_on_a_confirmed_move():
+    recorder = _FakeRecorder()
+    snapshot = _FakeSnapshot(_BOARD)
+    movement_detector = _FakeMovementDetector(result=snapshot)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()),
+        pipeline=_FakePipeline(),
+        movement_detector=movement_detector,
+        detection_recorder=recorder,
+    )
+
+    adapter.capture_movement(Color.GREEN, _EXPECTED_DICE)
+
+    assert recorder.snapshots == [snapshot]
+
+
+def test_capture_movement_shows_the_debug_window_with_the_movement_detectors_visualization():
+    window = _FakeDebugWindow()
+    frame = _frame()
+    visualization = _frame()
+    movement_detector = _FakeMovementDetector(result=_FakeSnapshot(_BOARD), last_visualization=visualization)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame),
+        pipeline=_FakePipeline(),
+        movement_detector=movement_detector,
+        debug_window=window,
+    )
+
+    adapter.capture_movement(Color.GREEN, _EXPECTED_DICE)
+
+    assert window.calls == [(frame, visualization)]
+
+
+def test_capture_movement_shows_the_debug_window_with_last_rectified_when_no_visualization_yet():
+    window = _FakeDebugWindow()
+    frame = _frame()
+    rectified = _frame()
+    movement_detector = _FakeMovementDetector(result=None, last_rectified=rectified)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame),
+        pipeline=_FakePipeline(),
+        movement_detector=movement_detector,
+        debug_window=window,
+    )
+
+    adapter.capture_movement(Color.GREEN, _EXPECTED_DICE)
 
     assert window.calls == [(frame, rectified)]
 

@@ -18,9 +18,12 @@ motion:
   background_alpha: 0.05
 
 stability:
-  # A move counts as "stable" once this many consecutive frames agree on
-  # every piece's assigned cell, each with above-threshold confidence.
+  # A move counts as "stable" once at least `window` of the last
+  # `lookback` frames agree on every piece's assigned cell, each with
+  # above-threshold confidence. `lookback` > `window` on purpose -- see
+  # roll_detection.example.yaml's identical stability.lookback comment.
   window: 5
+  lookback: 8
   min_confidence: 0.6
 
 validity:
@@ -30,3 +33,9 @@ validity:
   # state (same meaning as motion.* above).
   pixel_diff_threshold: 25.0
   pixel_diff_area_ratio: 0.02
+  # How many consecutive Invalid confirm attempts are tolerated -- staying
+  # in Wait for Stability and retrying on the next frame(s) -- before
+  # giving up and resetting to Piece Movement Detection. See
+  # roll_detection.example.yaml's identical validity.max_confirm_attempts
+  # comment. Optional -- defaults to 5 if omitted.
+  max_confirm_attempts: 5

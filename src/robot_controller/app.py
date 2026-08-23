@@ -14,13 +14,15 @@ import time
 from pathlib import Path
 
 import yaml
+from common.constants import Color
+from common.type import BoardState
 from gameplay import handlers
 from gameplay.engine import GameplayEngine
 from gameplay.errors import GameplayError
 from gameplay.move_selection import action_planner_move_selector
 from gameplay.phase import GamePhase
 from gameplay.result import GameResult
-from perception.ludo import LudoStatePipeline, RollDetector
+from perception.ludo import LudoStatePipeline, MovementDetector, RollDetector
 from perception.rectification import DEFAULT_FULL_SWEEP_BACKOFF, DEFAULT_MAX_CONSECUTIVE_MISSES, BoardRectifier
 from reasoning.game_engine import GameState
 
@@ -133,10 +135,28 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
         active_colors=set(config.game.players),
     )
 
+    # Same rationale as roll_detector's own BoardRectifier above -- a
+    # separate corner-tracking instance so Wait for children's movement's
+    # per-frame lookups get the same ROI-caching speedup, independent of
+    # capture()'s and capture_roll()'s (never hot at the same time as
+    # this one, different gameplay phases).
+    movement_detector = MovementDetector.from_config_file(
+        config.perception.movement_detection_config,
+        detector=pipeline.detector,
+        board_config=pipeline.board_config,
+        entry_offsets=pipeline.entry_offsets,
+        num_shared_steps=pipeline.num_shared_steps,
+        rectify=BoardRectifier(
+            max_consecutive_misses=aruco_cfg.get("max_consecutive_misses", DEFAULT_MAX_CONSECUTIVE_MISSES),
+            full_sweep_backoff=aruco_cfg.get("full_sweep_backoff", DEFAULT_FULL_SWEEP_BACKOFF),
+        ).rectify_keep_frame,
+    )
+
     perception = LudoPerceptionAdapter(
         camera=camera,
         pipeline=pipeline,
         roll_detector=roll_detector,
+        movement_detector=movement_detector,
         visualize_dir=config.perception.visualize_dir,
         key_dispatcher=key_dispatcher,
         snapshot_saver=snapshot_saver,
@@ -248,6 +268,20 @@ def _run_loop(engine: GameplayEngine, config: AppConfig) -> GameResult | None:
                     phase, stuck_attempts, engine.context.dice_attempts, engine.context.movement_attempts,
                 )
         else:
+            # Console-visible confirmations of what perception actually
+            # settled on -- the per-frame detection detail is DEBUG-only
+            # (see LudoPerceptionAdapter), but the final, confirmed
+            # result of each Wait-for-... self-loop is worth surfacing at
+            # INFO so it shows up on the console, not just the log file.
+            # Logged before "Phase -> %s" below (not after) so each
+            # confirmation reads as "this settled, so the phase changed",
+            # not the other way around.
+            if last_phase is GamePhase.WAIT_FOR_DICE:
+                logger.info(
+                    "%s rolled a %d", engine.context.game.current_turn.value, engine.context.die
+                )
+            if last_phase is GamePhase.UPDATE_GAME_STATE:
+                logger.info("Board state: %s", _format_board(engine.context.game.board))
             logger.info("Phase -> %s", phase)
             stuck_attempts = 0
         last_phase = phase
@@ -259,3 +293,10 @@ def _run_loop(engine: GameplayEngine, config: AppConfig) -> GameResult | None:
 
     logger.error("Game did not reach END_GAME within %d steps; stopping.", config.runtime.max_steps)
     return None
+
+
+def _format_board(board: BoardState) -> str:
+    by_color: dict[Color, list[int]] = {color: [] for color in Color}
+    for piece in board.pieces:
+        by_color[piece.color].append(piece.pos)
+    return " ".join(f"{color.value}={sorted(positions)}" for color, positions in by_color.items())

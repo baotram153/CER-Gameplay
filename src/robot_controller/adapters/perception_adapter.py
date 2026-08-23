@@ -11,7 +11,7 @@ import numpy as np
 
 from common.constants import Color
 from common.type import BoardState, Piece
-from perception.ludo import LudoStatePipeline, RollDetector
+from perception.ludo import LudoStatePipeline, MovementDetector, RollDetector
 
 from ..camera.base import FrameSource
 from ..console_keys import ConsoleKeyDispatcher
@@ -52,6 +52,7 @@ class LudoPerceptionAdapter:
         camera: FrameSource,
         pipeline: LudoStatePipeline,
         roll_detector: RollDetector | None = None,
+        movement_detector: MovementDetector | None = None,
         visualize_dir: str | None = None,
         key_dispatcher: ConsoleKeyDispatcher | None = None,
         snapshot_saver: SnapshotSaver | None = None,
@@ -61,6 +62,7 @@ class LudoPerceptionAdapter:
         self._camera = camera
         self._pipeline = pipeline
         self._roll_detector = roll_detector
+        self._movement_detector = movement_detector
         self._visualize_dir = visualize_dir
         self._key_dispatcher = key_dispatcher
         self._snapshot_saver = snapshot_saver
@@ -170,6 +172,67 @@ class LudoPerceptionAdapter:
         )
         return snapshot.board_state
 
+    def expect_new_roll(self) -> None:
+        if self._roll_detector is None:
+            raise RuntimeError("expect_new_roll() called without a roll_detector configured")
+        self._roll_detector.force_wait_for_stability()
+
+    def capture_movement(self, turn: Color, expected_dice: int) -> BoardState | None:
+        """capture()'s counterpart for Wait for children's movement:
+        routes the frame through MovementDetector instead of
+        LudoStatePipeline.run, so a board that hasn't actually finished
+        settling into a new piece configuration (still mid-slide, or read
+        during a spurious dice bump) can't be mistaken for a completed
+        move -- see MovementDetector's module docstring for the two-phase
+        motion/stability state machine and its two new-move validity
+        checks. Same routine-None-on-no-reading contract as capture(); a
+        `movement_detector` is required (see LudoPerceptionAdapter.__init__).
+        """
+        if self._movement_detector is None:
+            raise RuntimeError("capture_movement() called without a movement_detector configured")
+
+        if self._key_dispatcher is not None:
+            self._key_dispatcher.poll()
+
+        try:
+            frame = self._camera.read()
+        except CameraError:
+            raise
+        except Exception:
+            logger.exception("Unexpected camera error during capture_movement(); treating as no reading")
+            return None
+
+        if frame is None:
+            logger.debug("No camera frame available this tick")
+            return None
+
+        self._frame_count += 1
+        logger.debug("capture_movement(): frame #%d, shape=%s, turn=%s", self._frame_count, frame.shape, turn)
+
+        if self._snapshot_saver is not None:
+            self._snapshot_saver.maybe_save(frame)
+
+        try:
+            snapshot = self._movement_detector.step(frame, turn, expected_dice)
+        except Exception:
+            logger.exception("Unexpected error running the movement detector; treating as no reading")
+            self._show_debug_movement(frame)
+            return None
+
+        self._show_debug_movement(frame)
+
+        if snapshot is None:
+            return None
+
+        if self._detection_recorder is not None:
+            self._detection_recorder.maybe_record(snapshot)
+
+        logger.debug(
+            "capture_movement(): frame #%d confirmed a new movement, dice=%d, %d piece observation(s)",
+            self._frame_count, snapshot.board_state.dice, len(snapshot.pieces),
+        )
+        return snapshot.board_state
+
     def _show_debug_roll(self, raw_frame: np.ndarray) -> None:
         if self._debug_window is None:
             return
@@ -177,6 +240,15 @@ class LudoPerceptionAdapter:
         annotated = self._roll_detector.last_visualization
         if annotated is None:
             annotated = self._roll_detector.last_rectified
+        self._debug_window.show(raw_frame, annotated)
+
+    def _show_debug_movement(self, raw_frame: np.ndarray) -> None:
+        if self._debug_window is None:
+            return
+        assert self._movement_detector is not None
+        annotated = self._movement_detector.last_visualization
+        if annotated is None:
+            annotated = self._movement_detector.last_rectified
         self._debug_window.show(raw_frame, annotated)
 
     def _show_debug(self, raw_frame: np.ndarray) -> None:

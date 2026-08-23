@@ -83,6 +83,25 @@ def test_quiet_frames_never_leave_roll_detection():
     assert roll.step(_frame(50), Color.RED, ALL_YARDED) is None  # identical -> still no motion
 
 
+def test_force_wait_for_stability_skips_the_motion_gate():
+    # Simulates the robot's own controlled roll: no motion is ever
+    # observed here (the same frame value every tick), which would
+    # normally leave RollDetector stuck in Roll Detection forever -- but
+    # force_wait_for_stability() (called by capture_roll's caller right
+    # after the roll happened -- see PerceptionPort.expect_new_roll) skips
+    # straight past that gate, no motion needed.
+    stable_reading = [_dice_detection()]
+    roll = _roll_detector(frames=[stable_reading, stable_reading, stable_reading])
+
+    roll.force_wait_for_stability()
+    roll.step(_frame(50), Color.RED, ALL_YARDED)  # 1st stability reading
+    roll.step(_frame(50), Color.RED, ALL_YARDED)  # 2nd stability reading
+    result = roll.step(_frame(50), Color.RED, ALL_YARDED)  # 3rd -> stable -> confirm
+
+    assert result is not None
+    assert result.board_state.dice == 3
+
+
 def test_full_cycle_confirms_a_stable_new_roll():
     stable_reading = [_dice_detection()]
     roll = _roll_detector(frames=[stable_reading, stable_reading, stable_reading])

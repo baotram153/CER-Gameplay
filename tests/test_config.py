@@ -17,6 +17,7 @@ VALID_CONFIG = {
     "perception": {
         "inference_config": "modules/perception/configs/ludo/inference.yaml",
         "roll_detection_config": "modules/perception/configs/ludo/roll_detection.yaml",
+        "movement_detection_config": "modules/perception/configs/ludo/movement_detection.yaml",
     },
 }
 
