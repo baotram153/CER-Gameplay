@@ -102,14 +102,40 @@ def test_full_cycle_confirms_a_stable_new_roll():
 
 
 def test_disagreeing_readings_never_settle():
-    matching = [_dice_detection()]
-    mismatched = [Detection(bbox=(0, 0, 10, 10), center=(5, 5), class_id=1, confidence=0.9)]
-    frames = [matching, mismatched, matching, mismatched, matching, mismatched]
-    roll = _roll_detector(frames=frames)
+    """Three genuinely different dice values cycle with no majority ever
+    reaching required_matches within the lookback window -- the loosened
+    N-of-M stability rule tolerates occasional misses/gaps (see
+    test_occasional_missed_detections_still_settle below), but must still
+    refuse to settle on persistent, real disagreement."""
+    class_names = {0: "dice_3", 1: "dice_4", 2: "dice_5"}
+    readings = [
+        [Detection(bbox=(0, 0, 10, 10), center=(5, 5), class_id=class_id, confidence=0.9)]
+        for class_id in (0, 1, 2)
+    ]
+    frames = readings * 3  # each value appears at most twice within any lookback(6)-sized window
+    roll = _roll_detector(frames, detector=_FakeDetector(frames, class_names=class_names))
 
     roll.step(_frame(50), Color.RED, ALL_YARDED)  # baseline
     for _ in frames:
         assert roll.step(_frame(220), Color.RED, ALL_YARDED) is None
+
+
+def test_occasional_missed_detections_still_settle():
+    """A die reading that flickers between found and not-found (e.g. a
+    borderline-confidence NPU detection) should still settle once enough
+    matching reads accumulate, instead of a couple of missed frames
+    resetting all progress and never confirming."""
+    stable_reading = [_dice_detection()]
+    missed_reading: list[Detection] = []
+    frames = [stable_reading, missed_reading, stable_reading, missed_reading, stable_reading]
+    roll = _roll_detector(frames=frames)
+
+    roll.step(_frame(50), Color.RED, ALL_YARDED)  # baseline
+    results = [roll.step(_frame(220), Color.RED, ALL_YARDED) for _ in frames]
+
+    assert results[:-1] == [None, None, None, None]
+    assert results[-1] is not None
+    assert results[-1].board_state.dice == 3
 
 
 def test_repeating_the_exact_previous_confirmed_frame_is_invalid():

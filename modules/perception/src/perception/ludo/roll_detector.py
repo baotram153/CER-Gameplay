@@ -11,9 +11,15 @@ is actually happening at the board, instead of every frame:
   inference) watches for a hand entering the shot or the die starting to
   move. Nothing else runs until this fires.
 - Wait for Stability: the model now runs every frame; a roll is "stable"
-  once the last `stability_window` readings agree on both face value and
-  confidence (>= `min_confidence`) — i.e. the die has physically stopped
-  tumbling and a face is being read consistently.
+  once at least `stability_window` of the last `stability_lookback`
+  readings agree on both face value and confidence (>= `min_confidence`)
+  — i.e. the die has physically stopped tumbling and a face is being read
+  consistently. `stability_lookback` > `stability_window` on purpose: a
+  flaky model (e.g. a quantized NPU export) can miss the dice class
+  outright on an occasional frame even while the physical die hasn't
+  moved, so a handful of gaps within the lookback window are tolerated
+  rather than resetting all progress back to zero the way a strict
+  N-consecutive rule would.
 
 Once stable, two independent checks confirm this is a real, new roll
 rather than a false trigger (both must pass, or the machine drops back to
@@ -78,6 +84,7 @@ class RollDetector:
         entry_offsets: dict[Color, int],
         num_shared_steps: int,
         stability_window: int = 5,
+        stability_lookback: int | None = None,
         min_confidence: float = 0.6,
         pixel_diff_threshold: float = 25.0,
         pixel_diff_area_ratio: float = 0.02,
@@ -90,6 +97,11 @@ class RollDetector:
         self.board_config = board_config
         self.entry_offsets = entry_offsets
         self.num_shared_steps = num_shared_steps
+        self.stability_window = stability_window
+        # Defaults to a few frames of slack beyond stability_window -- see
+        # the module docstring for why the lookback is wider than the
+        # number of matches required within it.
+        self.stability_lookback = stability_lookback if stability_lookback is not None else stability_window + 3
         self.min_confidence = min_confidence
         self.pixel_diff_threshold = pixel_diff_threshold
         self.pixel_diff_area_ratio = pixel_diff_area_ratio
@@ -104,7 +116,7 @@ class RollDetector:
         self._rectify = rectify
 
         self._phase = _Phase.ROLL_DETECTION
-        self._readings: deque[tuple[int, float, Detection] | None] = deque(maxlen=stability_window)
+        self._readings: deque[tuple[int, float, Detection] | None] = deque(maxlen=self.stability_lookback)
         self._last_confirmed_signature: np.ndarray | None = None
 
         # Debug side-channel, mirroring LudoStatePipeline.last_rectified/
@@ -157,6 +169,7 @@ class RollDetector:
             entry_offsets=entry_offsets,
             num_shared_steps=num_shared_steps,
             stability_window=stability_cfg["window"],
+            stability_lookback=stability_cfg.get("lookback"),
             min_confidence=stability_cfg["min_confidence"],
             pixel_diff_threshold=validity_cfg["pixel_diff_threshold"],
             pixel_diff_area_ratio=validity_cfg["pixel_diff_area_ratio"],
@@ -213,20 +226,22 @@ class RollDetector:
         else:
             self.last_visualization = draw_piece_detections(draw_cells(rectified, cells), piece_detections)
 
-        if not _is_stable(self._readings, self.min_confidence):
+        stable = _stable_reading(self._readings, self.stability_window, self.min_confidence)
+        if stable is None:
             return None
 
-        return self._confirm(detections, rectified, board_rect, turn, expected_pieces)
+        return self._confirm(stable, detections, rectified, board_rect, turn, expected_pieces)
 
     def _confirm(
         self,
+        stable: tuple[int, float, Detection],
         detections: list[Detection],
         rectified: np.ndarray,
         board_rect: tuple[int, int, int, int],
         turn: Color,
         expected_pieces: list[Piece],
     ) -> LudoBoardSnapshot | None:
-        value, _confidence, dice_detection = self._readings[-1]
+        value, _confidence, dice_detection = stable
         cells = load_track_cells(self.board_config, board_rect)
         pieces, piece_observations = assign_pieces(
             self.detector.pieces(detections), cells, self.entry_offsets, self.num_shared_steps
@@ -264,14 +279,35 @@ def _read_dice(detector: LudoDetector, detections: list[Detection]) -> tuple[int
     return (value, det.confidence, det)
 
 
-def _is_stable(readings: deque[tuple[int, float, Detection] | None], min_confidence: float) -> bool:
-    if len(readings) < readings.maxlen:
-        return False
-    if any(r is None for r in readings):
-        return False
-    if len({r[0] for r in readings}) != 1:
-        return False
-    return all(r[1] >= min_confidence for r in readings)
+def _stable_reading(
+    readings: deque[tuple[int, float, Detection] | None], required_matches: int, min_confidence: float
+) -> tuple[int, float, Detection] | None:
+    """The most-agreed-on reading in `readings`, if at least
+    `required_matches` of them (out of up to `readings.maxlen` looked at --
+    see stability_lookback) share the same face value at >= min_confidence.
+    None entries (a miss -- rectify failed, or the model didn't find the
+    dice class that frame) and lower-confidence/disagreeing values simply
+    don't count toward any value's tally; they don't reset it either, so a
+    handful of them interspersed among otherwise-agreeing reads doesn't
+    prevent settling. Returns the most RECENT matching reading (for its
+    Detection, used for the confirmed snapshot's bbox) when the threshold
+    is met."""
+    matches: dict[int, list[tuple[float, Detection]]] = {}
+    for r in readings:
+        if r is None:
+            continue
+        value, confidence, detection = r
+        if confidence < min_confidence:
+            continue
+        matches.setdefault(value, []).append((confidence, detection))
+
+    if not matches:
+        return None
+    value, hits = max(matches.items(), key=lambda kv: len(kv[1]))
+    if len(hits) < required_matches:
+        return None
+    confidence, detection = hits[-1]
+    return value, confidence, detection
 
 
 def _pieces_match(pieces: list[Piece], expected: list[Piece]) -> bool:

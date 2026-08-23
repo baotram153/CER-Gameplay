@@ -27,9 +27,14 @@ motion:
   background_alpha: 0.05
 
 stability:
-  # A roll counts as "stable" once this many consecutive frames agree 
-  # on both the decoded face value have above-threshold confidence.
-  window: 5
+  # A roll counts as "stable" once at least `window` of the last
+  # `lookback` frames agree on both the decoded face value and
+  # above-threshold confidence. `lookback` > `window` on purpose: it lets
+  # an occasional missed/low-confidence read (e.g. a quantized NPU model
+  # briefly missing the dice class even though the die hasn't moved) get
+  # skipped over instead of resetting progress back to zero.
+  window: 3
+  lookback: 10
   min_confidence: 0.6
 
 validity:
