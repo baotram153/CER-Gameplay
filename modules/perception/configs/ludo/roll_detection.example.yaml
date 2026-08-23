@@ -46,3 +46,14 @@ validity:
   # can legitimately land on the same face twice in a row.
   pixel_diff_threshold: 25.0
   pixel_diff_area_ratio: 0.02
+  # How many consecutive Invalid confirm attempts (pixel-diff and/or
+  # pieces-moved check failing) are tolerated -- staying in Wait for
+  # Stability and retrying on the next frame(s) -- before giving up and
+  # resetting to Roll Detection. A single bad frame (a piece's cell
+  # assignment wobbling right at a yard/track boundary, a stray
+  # low-confidence misread) shouldn't necessarily throw away an
+  # otherwise-good roll and force the human to re-trigger motion from
+  # scratch. Higher tolerates longer/noisier disagreement before giving
+  # up; 1 disables retrying (any Invalid result resets immediately, the
+  # original behavior). Optional -- defaults to 5 if omitted.
+  max_confirm_attempts: 5

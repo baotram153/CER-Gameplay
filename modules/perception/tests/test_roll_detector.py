@@ -171,6 +171,87 @@ def test_a_moved_piece_invalidates_the_roll():
     assert result is None
 
 
+def test_an_invalid_confirm_retries_before_giving_up():
+    # The first _confirm attempt sees a stray moved piece (Invalid); the
+    # very next frame's expected_pieces reflects the board catching up --
+    # with no fresh motion trigger in between, RollDetector should retry
+    # _confirm on that next frame and succeed, instead of giving up (and
+    # forcing a whole new stability cycle) after just one Invalid result.
+    stable_reading = [_dice_detection()]
+    roll = _roll_detector(frames=[stable_reading, stable_reading, stable_reading, stable_reading])
+    moved_pieces = [Piece(color=Color.RED, pos=5)] + ALL_YARDED[1:]
+
+    roll.step(_frame(50), Color.RED, ALL_YARDED)  # baseline
+    roll.step(_frame(220), Color.RED, ALL_YARDED)  # 1st stability reading
+    roll.step(_frame(220), Color.RED, ALL_YARDED)  # 2nd stability reading
+    first_attempt = roll.step(_frame(220), Color.RED, moved_pieces)  # 3rd -> stable -> Invalid, retry (not reset)
+    assert first_attempt is None
+
+    second_attempt = roll.step(_frame(220), Color.RED, ALL_YARDED)  # still stable -> retry -> Valid
+    assert second_attempt is not None
+    assert second_attempt.board_state.dice == 3
+
+
+def test_persistent_invalid_confirm_eventually_gives_up_and_resets():
+    stable_reading = [_dice_detection()]
+    moved_pieces = [Piece(color=Color.RED, pos=5)] + ALL_YARDED[1:]
+    roll = _roll_detector(frames=[stable_reading] * 7, max_confirm_attempts=2)
+
+    roll.step(_frame(50), Color.RED, moved_pieces)  # baseline
+    roll.step(_frame(220), Color.RED, moved_pieces)  # 1st stability reading
+    roll.step(_frame(220), Color.RED, moved_pieces)  # 2nd stability reading
+    assert roll.step(_frame(220), Color.RED, moved_pieces) is None  # 3rd -> stable -> Invalid, attempt 1/2 (retry)
+    assert roll.step(_frame(220), Color.RED, moved_pieces) is None  # still stable -> Invalid, attempt 2/2 -> gives up
+
+    # Having given up, a whole fresh stability cycle (new motion trigger +
+    # window matching readings) is required -- even with expected_pieces
+    # now correct, nothing happens without one.
+    assert roll.step(_frame(220), Color.RED, ALL_YARDED) is None  # no motion vs. the frame just before -> no-op
+    roll.step(_frame(90), Color.RED, ALL_YARDED)  # motion -> 1st reading of a fresh cycle
+    roll.step(_frame(90), Color.RED, ALL_YARDED)  # 2nd reading
+    result = roll.step(_frame(90), Color.RED, ALL_YARDED)  # 3rd -> stable -> Valid this time
+
+    assert result is not None
+    assert result.board_state.dice == 3
+
+
+def test_a_stray_uninvolved_color_blocks_confirmation_by_default():
+    # BLUE isn't RED -- an uninvolved color's stray/misdetected piece
+    # (e.g. a physical prop pawn for a color that isn't even playing this
+    # game) still invalidates every roll when no active_colors is given.
+    stable_reading = [_dice_detection()]
+    roll = _roll_detector(frames=[stable_reading, stable_reading, stable_reading])
+    stray_blue = ALL_YARDED[:8] + [Piece(color=Color.BLUE, pos=5)] + ALL_YARDED[9:]
+
+    roll.step(_frame(50), Color.RED, stray_blue)
+    roll.step(_frame(220), Color.RED, stray_blue)
+    roll.step(_frame(220), Color.RED, stray_blue)
+    result = roll.step(_frame(220), Color.RED, stray_blue)
+
+    assert result is None
+
+
+def test_active_colors_ignores_an_uninvolved_colors_stray_piece():
+    # Same stray BLUE piece as above, but RollDetector now knows this is a
+    # RED-vs-GREEN game -- BLUE was never going to move, so its detection
+    # noise shouldn't block RED's roll (mirrors
+    # gameplay.validation.boards_pieces_equal's `colors` restriction).
+    stable_reading = [_dice_detection()]
+    roll = _roll_detector(
+        frames=[stable_reading, stable_reading, stable_reading],
+        active_colors={Color.RED, Color.GREEN},
+    )
+    stray_blue = ALL_YARDED[:8] + [Piece(color=Color.BLUE, pos=5)] + ALL_YARDED[9:]
+
+    roll.step(_frame(50), Color.RED, stray_blue)
+    roll.step(_frame(220), Color.RED, stray_blue)
+    roll.step(_frame(220), Color.RED, stray_blue)
+    result = roll.step(_frame(220), Color.RED, stray_blue)
+
+    assert result is not None
+    assert result.board_state.dice == 3
+
+
 def test_unreadable_frame_during_stability_extends_the_window_without_crashing():
     stable_reading = [_dice_detection()]
     calls = {"n": 0}

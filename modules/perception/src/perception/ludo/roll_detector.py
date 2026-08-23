@@ -22,21 +22,32 @@ is actually happening at the board, instead of every frame:
   N-consecutive rule would.
 
 Once stable, two independent checks confirm this is a real, new roll
-rather than a false trigger (both must pass, or the machine drops back to
-Roll Detection with no result — matching the diagram's single "Invalid"
-edge, since a bumped piece or a spurious reading is an expected, recoverable
-occurrence here, not something to raise on):
+rather than a false trigger:
   1. Pixel-level: the settled frame must differ from the *previous
      confirmed* roll's frame by more than a threshold. Comparing the
      decoded VALUE instead doesn't work — a die can legitimately roll the
      same face twice in a row, which would look like "no new roll
      happened" even though one did.
-  2. State-level: the pieces detected in the settled frame must exactly
-     match `expected_pieces` (the board's pieces as of the start of this
-     turn, supplied by the caller). This is meant to be a die roll, not a
-     move — if a piece looks like it moved too, something is off (an
-     accidental bump, an early move, a detection glitch) and the roll
-     shouldn't be trusted yet.
+  2. State-level: the pieces detected in the settled frame must match
+     `expected_pieces` (the board's pieces as of the start of this turn,
+     supplied by the caller), among `active_colors` if given -- this is
+     meant to be a die roll, not a move, so a piece of an actual player
+     looking like it moved too means something is off (an accidental
+     bump, an early move, a detection glitch) and the roll shouldn't be
+     trusted yet. `active_colors` excludes colors that never play in this
+     game (fewer than 4 players): their pieces never move, so a single
+     noisy detection of one of THEIR pieces shouldn't be able to block
+     every future roll forever.
+
+Either check failing is Invalid, but that doesn't necessarily send the
+diagram straight back to Roll Detection: a single bad frame (a piece's
+cell assignment wobbling right at a yard/track boundary, a stray
+low-confidence misread) is tolerated for up to `max_confirm_attempts`
+consecutive Invalid results -- the machine just stays in Wait for
+Stability and tries again on the next frame(s), since the same physical
+roll is very likely still sitting there waiting to be read correctly.
+Only after that budget is exhausted does it give up and reset to Roll
+Detection, matching the diagram's single "Invalid" edge.
 
 `expected_pieces` is a parameter (not tracked internally) so this stays in
 sync with whatever `reasoning.GameState.board.pieces` actually is —
@@ -91,15 +102,28 @@ class RollDetector:
         min_confidence: float = 0.6,
         pixel_diff_threshold: float = 25.0,
         pixel_diff_area_ratio: float = 0.02,
+        max_confirm_attempts: int = 5,
         downscale_size: tuple[int, int] = DEFAULT_DOWNSCALE_SIZE,
         blur_kernel: tuple[int, int] = DEFAULT_BLUR_KERNEL,
         motion: MotionDetector | None = None,
         rectify: RectifyFn = rectify_keep_frame,
+        active_colors: set[Color] | None = None,
     ) -> None:
         self.detector = detector
         self.board_config = board_config
         self.entry_offsets = entry_offsets
         self.num_shared_steps = num_shared_steps
+        # Restricts _confirm's pieces_untouched check to these colors --
+        # None (default) checks all 4. In a game with fewer than 4 active
+        # players, the uninvolved colors' pieces never move (their
+        # BoardState.pieces entries are frozen at their initial yard
+        # position for the whole game -- reasoning.GameState.play_turn
+        # never touches them), so a single missed/noisy detection of one
+        # of THEIR pieces would otherwise reject every future roll forever
+        # -- mirrors gameplay.validation.boards_pieces_equal's `colors`
+        # param, which solves the identical problem for the post-move
+        # board check.
+        self._active_colors = active_colors
         self.stability_window = stability_window
         # Defaults to a few frames of slack beyond stability_window -- see
         # the module docstring for why the lookback is wider than the
@@ -108,6 +132,12 @@ class RollDetector:
         self.min_confidence = min_confidence
         self.pixel_diff_threshold = pixel_diff_threshold
         self.pixel_diff_area_ratio = pixel_diff_area_ratio
+        # How many consecutive Invalid _confirm results (pieces mismatch
+        # and/or not-a-new-frame) are tolerated before giving up on this
+        # stability episode -- see _confirm's docstring/module docstring
+        # for why a single Invalid frame doesn't necessarily mean the
+        # whole roll should be discarded.
+        self.max_confirm_attempts = max_confirm_attempts
         # Must match whatever `motion` (if injected) itself uses -- both
         # feed frame_signature, and signatures computed at different
         # sizes/blur aren't comparable. Not enforced beyond this default,
@@ -121,6 +151,7 @@ class RollDetector:
         self._phase = _Phase.ROLL_DETECTION
         self._readings: deque[tuple[int, float, Detection] | None] = deque(maxlen=self.stability_lookback)
         self._last_confirmed_signature: np.ndarray | None = None
+        self._confirm_attempts = 0
 
         # Debug side-channel, mirroring LudoStatePipeline.last_rectified/
         # last_visualization -- updated on every frame that makes it past
@@ -139,6 +170,7 @@ class RollDetector:
         entry_offsets: dict[Color, int],
         num_shared_steps: int,
         rectify: RectifyFn | None = None,
+        active_colors: set[Color] | None = None,
     ) -> "RollDetector":
         """Builds a fully-wired RollDetector (+ its MotionDetector) from a
         parsed roll_detection.yaml (see configs/ludo/roll_detection.example.yaml
@@ -150,6 +182,8 @@ class RollDetector:
         pass a `BoardRectifier().rectify_keep_frame` (bound method) instead
         to reuse its corner-position caching across calls, the way
         LudoStatePipeline does for its own reads of the same fixed camera.
+        `active_colors` is this game's actual players (e.g. config.game.players)
+        -- see RollDetector.__init__.
         """
         frame_cfg = config["frame_processing"]
         downscale_size = tuple(frame_cfg["downscale_size"])
@@ -176,9 +210,11 @@ class RollDetector:
             min_confidence=stability_cfg["min_confidence"],
             pixel_diff_threshold=validity_cfg["pixel_diff_threshold"],
             pixel_diff_area_ratio=validity_cfg["pixel_diff_area_ratio"],
+            max_confirm_attempts=validity_cfg.get("max_confirm_attempts", 5),
             downscale_size=downscale_size,
             blur_kernel=blur_kernel,
             motion=motion,
+            active_colors=active_colors,
             **kwargs,
         )
 
@@ -191,9 +227,13 @@ class RollDetector:
         entry_offsets: dict[Color, int],
         num_shared_steps: int,
         rectify: RectifyFn | None = None,
+        active_colors: set[Color] | None = None,
     ) -> "RollDetector":
         config = yaml.safe_load(Path(config_path).read_text())
-        return cls.from_config(config, detector, board_config, entry_offsets, num_shared_steps, rectify=rectify)
+        return cls.from_config(
+            config, detector, board_config, entry_offsets, num_shared_steps,
+            rectify=rectify, active_colors=active_colors,
+        )
 
     def step(self, raw_frame: np.ndarray, turn: Color, expected_pieces: list[Piece]) -> LudoBoardSnapshot | None:
         """Feed one camera frame in. Returns a confirmed LudoBoardSnapshot
@@ -206,6 +246,7 @@ class RollDetector:
                 return None
             self._phase = _Phase.WAIT_FOR_STABILITY
             self._readings.clear()
+            self._confirm_attempts = 0
 
         rectified, board_rect = self._rectify(raw_frame, self.board_config)
         if rectified is None:
@@ -257,7 +298,7 @@ class RollDetector:
         else:
             ratio = changed_ratio(signature, self._last_confirmed_signature, self.pixel_diff_threshold)
             is_new_frame = ratio > self.pixel_diff_area_ratio
-        pieces_untouched = _pieces_match(pieces, expected_pieces)
+        pieces_untouched = _pieces_match(pieces, expected_pieces, self._active_colors)
 
         logger.debug(
             "_confirm: candidate die=%d (confidence=%.3f) -- is_new_frame=%s "
@@ -268,36 +309,55 @@ class RollDetector:
         )
         if not pieces_untouched:
             logger.debug(
-                "_confirm: pieces mismatch -- detected=%s expected=%s",
-                sorted((p.color, p.pos) for p in pieces), sorted((p.color, p.pos) for p in expected_pieces),
+                "_confirm: pieces mismatch (active_colors=%s) -- detected=%s expected=%s",
+                "all" if self._active_colors is None else sorted(c.value for c in self._active_colors),
+                _sorted_pieces(pieces, self._active_colors), _sorted_pieces(expected_pieces, self._active_colors),
             )
 
-        # Whether this settles as Valid or Invalid, the roll-detection
-        # cycle is over either way -- reset to watch for the next one.
+        if is_new_frame and pieces_untouched:
+            self._phase = _Phase.ROLL_DETECTION
+            self._readings.clear()
+            self.motion.reset()
+            self._confirm_attempts = 0
+            self._last_confirmed_signature = signature
+            logger.debug("_confirm: confirmed die=%d as a new roll", value)
+            board_state = BoardState(pieces=pieces, dice=value, turn=turn, timestamp=_time())
+            return LudoBoardSnapshot(
+                board_state=board_state,
+                pieces=piece_observations,
+                dice=DiceObservation(value=value, confidence=dice_detection.confidence, bbox=dice_detection.bbox),
+            )
+
+        # Invalid -- but a single bad frame (a piece's cell assignment
+        # wobbling right at a yard/track boundary, a stray low-confidence
+        # detection) shouldn't necessarily throw away an otherwise-good
+        # roll and force the human to re-trigger motion from scratch. Stay
+        # in Wait for Stability and let _stable_reading/_confirm run again
+        # on the next frame(s) -- up to max_confirm_attempts consecutive
+        # Invalid results -- before actually giving up.
+        reasons = ", ".join(
+            reason for reason, failed in (
+                ("not a new frame", not is_new_frame), ("pieces moved", not pieces_untouched),
+            ) if failed
+        )
+        self._confirm_attempts += 1
+        if self._confirm_attempts < self.max_confirm_attempts:
+            logger.debug(
+                "_confirm: die=%d still Invalid (%s) -- retrying (%d/%d attempt(s) used), "
+                "staying in Wait for Stability",
+                value, reasons, self._confirm_attempts, self.max_confirm_attempts,
+            )
+            return None
+
+        logger.debug(
+            "_confirm: rejecting die=%d as Invalid (%s) after %d attempt(s) -- back to Roll Detection",
+            value, reasons, self._confirm_attempts,
+        )
         self._phase = _Phase.ROLL_DETECTION
         self._readings.clear()
         self.motion.reset()
-
-        if not (is_new_frame and pieces_untouched):
-            logger.debug(
-                "_confirm: rejecting die=%d as Invalid (%s) -- back to Roll Detection",
-                value,
-                ", ".join(
-                    reason for reason, failed in (
-                        ("not a new frame", not is_new_frame), ("pieces moved", not pieces_untouched),
-                    ) if failed
-                ),
-            )
-            return None  # Invalid -> back to Roll Detection
-
-        self._last_confirmed_signature = signature
-        logger.debug("_confirm: confirmed die=%d as a new roll", value)
-        board_state = BoardState(pieces=pieces, dice=value, turn=turn, timestamp=_time())
-        return LudoBoardSnapshot(
-            board_state=board_state,
-            pieces=piece_observations,
-            dice=DiceObservation(value=value, confidence=dice_detection.confidence, bbox=dice_detection.bbox),
-        )
+        self._confirm_attempts = 0
+        return None
 
 
 def _read_dice(detector: LudoDetector, detections: list[Detection]) -> tuple[int, float, Detection] | None:
@@ -339,6 +399,19 @@ def _stable_reading(
     return value, confidence, detection
 
 
-def _pieces_match(pieces: list[Piece], expected: list[Piece]) -> bool:
-    key = lambda ps: sorted((p.color, p.pos) for p in ps)
-    return key(pieces) == key(expected)
+def _sorted_pieces(pieces: list[Piece], colors: set[Color] | None) -> list[tuple[Color, int]]:
+    filtered = pieces if colors is None else [p for p in pieces if p.color in colors]
+    return sorted((p.color, p.pos) for p in filtered)
+
+
+def _pieces_match(pieces: list[Piece], expected: list[Piece], colors: set[Color] | None = None) -> bool:
+    """True iff `pieces` and `expected` agree on every (color, pos), among
+    `colors` if given (None = all 4). Restricting to the game's actual
+    active colors matters here for the same reason
+    gameplay.validation.boards_pieces_equal restricts to the mover's own
+    color: a piece belonging to a color that never plays (fewer than 4
+    players) never moves, so its BoardState entry is frozen at its initial
+    yard position for the entire game -- a single noisy/occluded detection
+    of that piece would otherwise make every future roll look "invalid"
+    forever, with no way to ever self-correct."""
+    return _sorted_pieces(pieces, colors) == _sorted_pieces(expected, colors)
