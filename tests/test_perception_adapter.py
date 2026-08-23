@@ -9,11 +9,29 @@ from robot_controller.adapters.perception_adapter import LudoPerceptionAdapter
 from robot_controller.errors import CameraError
 
 _BOARD = BoardState(pieces=[Piece(color=c, pos=0) for c in Color for _ in range(4)], dice=3, turn=Color.GREEN, timestamp=0.0)
+_EXPECTED_PIECES = list(_BOARD.pieces)
 
 
 class _FakeSnapshot:
-    def __init__(self, board_state):
+    def __init__(self, board_state, pieces=()):
         self.board_state = board_state
+        self.pieces = pieces
+
+
+class _FakeRollDetector:
+    def __init__(self, result=None, exc: Exception | None = None, last_visualization=None, last_rectified=None):
+        self._result = result
+        self._exc = exc
+        self.calls = []
+        # RollDetector's real debug side-channel -- see roll_detector.py.
+        self.last_visualization = last_visualization
+        self.last_rectified = last_rectified
+
+    def step(self, frame, turn, expected_pieces):
+        self.calls.append((frame, turn, expected_pieces))
+        if self._exc is not None:
+            raise self._exc
+        return self._result
 
 
 class _FakeCamera:
@@ -98,6 +116,106 @@ def test_capture_passes_image_name_only_when_visualizing():
     _frame_arg, _turn, visualize_dir, image_name = pipeline.calls[0]
     assert visualize_dir == "out/"
     assert image_name is not None
+
+
+def test_capture_roll_raises_without_a_configured_roll_detector():
+    adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline())
+
+    with pytest.raises(RuntimeError):
+        adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
+
+
+def test_capture_roll_returns_none_when_no_frame_available():
+    roll_detector = _FakeRollDetector()
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=None), pipeline=_FakePipeline(), roll_detector=roll_detector
+    )
+
+    assert adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES) is None
+    assert roll_detector.calls == []
+
+
+def test_capture_roll_returns_none_while_no_roll_has_settled_yet():
+    roll_detector = _FakeRollDetector(result=None)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline(), roll_detector=roll_detector
+    )
+
+    assert adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES) is None
+    assert roll_detector.calls[0][1] is Color.GREEN
+    assert roll_detector.calls[0][2] == _EXPECTED_PIECES
+
+
+def test_capture_roll_returns_board_state_once_a_roll_is_confirmed():
+    roll_detector = _FakeRollDetector(result=_FakeSnapshot(_BOARD))
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline(), roll_detector=roll_detector
+    )
+
+    assert adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES) is _BOARD
+
+
+def test_capture_roll_returns_none_on_unexpected_roll_detector_error():
+    roll_detector = _FakeRollDetector(exc=RuntimeError("detector blew up"))
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()), pipeline=_FakePipeline(), roll_detector=roll_detector
+    )
+
+    assert adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES) is None
+
+
+def test_capture_roll_propagates_camera_error():
+    roll_detector = _FakeRollDetector()
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(exc=CameraError("camera is gone")), pipeline=_FakePipeline(), roll_detector=roll_detector
+    )
+
+    with pytest.raises(CameraError):
+        adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
+
+
+def test_capture_roll_feeds_the_detection_recorder_on_a_confirmed_roll():
+    recorder = _FakeRecorder()
+    snapshot = _FakeSnapshot(_BOARD)
+    roll_detector = _FakeRollDetector(result=snapshot)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=_frame()),
+        pipeline=_FakePipeline(),
+        roll_detector=roll_detector,
+        detection_recorder=recorder,
+    )
+
+    adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
+
+    assert recorder.snapshots == [snapshot]
+
+
+def test_capture_roll_shows_the_debug_window_with_the_roll_detectors_visualization():
+    window = _FakeDebugWindow()
+    frame = _frame()
+    visualization = _frame()
+    roll_detector = _FakeRollDetector(result=_FakeSnapshot(_BOARD), last_visualization=visualization)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame), pipeline=_FakePipeline(), roll_detector=roll_detector, debug_window=window
+    )
+
+    adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
+
+    assert window.calls == [(frame, visualization)]
+
+
+def test_capture_roll_shows_the_debug_window_with_last_rectified_when_no_visualization_yet():
+    window = _FakeDebugWindow()
+    frame = _frame()
+    rectified = _frame()
+    roll_detector = _FakeRollDetector(result=None, last_rectified=rectified)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame), pipeline=_FakePipeline(), roll_detector=roll_detector, debug_window=window
+    )
+
+    adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
+
+    assert window.calls == [(frame, rectified)]
 
 
 class _FakeDispatcher:

@@ -94,7 +94,10 @@ def _config_with_camera(tmp_path, camera_overrides: dict, extra: dict | None = N
             "player_roles": {"green": "robot", "yellow": "human"},
         },
         "camera": camera_overrides,
-        "perception": {"inference_config": "modules/perception/configs/ludo/inference.yaml"},
+        "perception": {
+            "inference_config": "modules/perception/configs/ludo/inference.yaml",
+            "roll_detection_config": "modules/perception/configs/ludo/roll_detection.yaml",
+        },
         **(extra or {}),
     }
     path = tmp_path / "app.yaml"

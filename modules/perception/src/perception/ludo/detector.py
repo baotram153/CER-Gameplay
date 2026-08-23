@@ -3,6 +3,7 @@
 split by class-name prefix ("piece_" / "dice_")."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,8 @@ import numpy as np
 from common.constants import Color
 
 from ..detection import Detection, NpuObjectDetector, ObjectDetector
+
+logger = logging.getLogger(__name__)
 
 # A piece's bbox bottom edge sits closer to the board surface than the bbox
 # centroid does for an upright piece, making it the more reliable point for
@@ -56,6 +59,7 @@ class LudoDetector:
         if use_npu:
             if npu_weights is None:
                 raise ValueError("npu_weights is required when use_npu is true")
+            logger.debug("LudoDetector: using NpuObjectDetector backend, npu_weights=%r", str(npu_weights))
             self.detector = NpuObjectDetector(
                 weights=npu_weights,
                 num_classes=len(self.class_names),
@@ -65,6 +69,7 @@ class LudoDetector:
                 qnn_backend_path=qnn_backend_path,
             )
         else:
+            logger.debug("LudoDetector: using ObjectDetector (CPU/PyTorch) backend, weights=%r", str(weights))
             self.detector = ObjectDetector(
                 weights=weights,
                 fallback_weights=fallback_weights,
@@ -75,7 +80,9 @@ class LudoDetector:
 
     def detect(self, image: np.ndarray) -> list[Detection]:
         """Every raw detection (pieces and dice together), unfiltered."""
-        return self.detector.detect(image)
+        detections = self.detector.detect(image)
+        logger.debug("LudoDetector.detect: %d raw detection(s)", len(detections))
+        return detections
 
     def pieces(self, detections: list[Detection]) -> list[tuple[Color, Detection]]:
         """(color, detection) for every "piece_<color>"-class detection."""
@@ -85,6 +92,11 @@ class LudoDetector:
             prefix, _, value = name.partition("_")
             if prefix == "piece":
                 result.append((Color(value), det))
+            else:
+                logger.debug(
+                    "LudoDetector.pieces: skipping class_id=%d (name=%r), not a piece_<color> class",
+                    det.class_id, name,
+                )
         return result
 
     def dice_candidates(self, detections: list[Detection]) -> list[tuple[int, Detection]]:

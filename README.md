@@ -92,8 +92,21 @@ uv run python main.py --config path/to/app.yaml
 This starts the camera, builds a new game from `configs/robot_controller/app.yaml`,
 and runs `GameplayEngine` until someone wins, an unrecoverable error occurs
 (e.g. the camera can't be recovered), or `runtime.max_steps` is reached.
-Logs go to the console and to a rotating `logs/robot_controller.log` by
-default (see the `logging:` section of the config).
+Logs go to the console and, by default, to `logs/run_<start-time>/` -- a fresh
+directory per run, timestamped by when the process started, containing
+`robot_controller.log` (everything, combined) plus a `modules/` subfolder with
+one file per module that actually logged something (e.g.
+`modules/perception.detection.npu_detector.log`), so you can follow just one
+piece of the pipeline without wading through the rest. Every line in every
+file is tagged with `[turn=<color>]` for the player whose turn it was when
+that line was logged. `logging.level` controls what's captured to the files
+(set it to `DEBUG` for the perception pipeline's full per-step tracing);
+`logging.console_level` is an independent, usually-higher threshold for the
+terminal only, so a live run's console stays readable even with `level:
+DEBUG` -- the files still get everything at `level` regardless. Rotation
+(`max_bytes`/`backup_count`) only applies within a single run's files, as a
+safety net against one run logging enough to fill the disk -- see the
+`logging:` section of the config.
 
 Since `modules/manipulation` has no real actuator yet, the robot's turns
 are carried out by a human operator: the app logs what to physically do

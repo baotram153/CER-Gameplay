@@ -53,3 +53,13 @@ def test_match_legal_move_returns_none_when_board_hasnt_changed():
     piece = Piece(color=Color.RED, pos=1)
     options = [Move(piece=piece, from_pos=1, to_pos=2)]
     assert match_legal_move(before, before, options) is None
+
+
+def test_diff_matches_move_ignores_noisy_detection_of_other_colors():
+    """A dropped detection on an uninvolved color must not block a correct
+    move from matching -- see assign_pieces' "assuming still in yard"
+    fallback for pieces the detector misses on a given frame."""
+    before = _board({Color.RED: [1, 0, 0, 0], Color.GREEN: [10, 0, 0, 0]})
+    after = _board({Color.RED: [4, 0, 0, 0], Color.GREEN: [0, 0, 0, 0]})
+    move = Move(piece=Piece(color=Color.RED, pos=1), from_pos=1, to_pos=4)
+    assert diff_matches_move(before, after, move)

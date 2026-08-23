@@ -6,6 +6,8 @@ can reuse the exact same cell-assignment logic instead of duplicating it.
 """
 from __future__ import annotations
 
+import logging
+
 from common.constants import Color
 from common.type import Piece, TrackCell
 
@@ -13,6 +15,8 @@ from ..detection import Detection
 from .detector import piece_reference_point
 from .models import Keypoints, PieceObservation
 from .track import cell_to_pos, cells_for_color
+
+logger = logging.getLogger(__name__)
 
 
 def assign_pieces(
@@ -31,8 +35,19 @@ def assign_pieces(
     pieces: list[Piece] = []
     observations: list[PieceObservation] = []
     for color, found in by_color.items():
+        if len(found) > 4:
+            logger.debug(
+                "assign_pieces: %s has %d detections, more than the 4 physical pieces -- "
+                "keeping the first 4, dropping the rest",
+                color, len(found),
+            )
         found = found[:4]
         missing = 4 - len(found)
+        if missing:
+            logger.debug(
+                "assign_pieces: %s has only %d/4 piece(s) detected -- assuming %d still in yard",
+                color, len(found), missing,
+            )
         for det, cell in found:
             pos = cell_to_pos(cell, color, entry_offsets, num_shared_steps)
             pieces.append(Piece(color=color, pos=pos))

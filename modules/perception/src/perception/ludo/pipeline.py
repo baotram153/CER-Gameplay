@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -21,6 +22,8 @@ from .models import DiceObservation, LudoBoardSnapshot
 from .pieces import assign_pieces
 from .track import load_track_cells
 from .visualize import build_boxes_image
+
+logger = logging.getLogger(__name__)
 
 
 class LudoStatePipeline:
@@ -87,23 +90,38 @@ class LudoStatePipeline:
         if visualize_dir is not None and image_name is None:
             raise ValueError("image_name is required when visualize_dir is set")
 
+        logger.debug("LudoStatePipeline.run: raw_image shape=%s, turn=%s", raw_image.shape, turn)
+
         rectified, board_rect = self._rectifier.rectify_keep_frame(raw_image, self.board_config)
         if rectified is None:
+            logger.debug("LudoStatePipeline.run: board corners not found this frame")
             raise ValueError(
                 "Could not detect all 4 board corner markers; check camera framing/lighting."
             )
+        logger.debug(
+            "LudoStatePipeline.run: rectified to shape=%s, board_rect=%s", rectified.shape, board_rect
+        )
         self.last_rectified = rectified
 
         cells = load_track_cells(self.board_config, board_rect)
+        logger.debug("LudoStatePipeline.run: loaded %d track cells", len(cells))
 
         detections = self.detector.detect(rectified)
         piece_detections = self.detector.pieces(detections)
         dice_candidates = self.detector.dice_candidates(detections)
+        logger.debug(
+            "LudoStatePipeline.run: %d raw detection(s) -> %d piece(s), %d dice candidate(s)",
+            len(detections), len(piece_detections), len(dice_candidates),
+        )
 
         pieces, piece_observations = assign_pieces(
             piece_detections, cells, self.entry_offsets, self.num_shared_steps
         )
         dice_value, dice_detection = pick_dice_value(dice_candidates)
+        logger.debug(
+            "LudoStatePipeline.run: assigned %d piece(s) to cells, dice_value=%d (confidence=%.3f)",
+            len(piece_observations), dice_value, dice_detection.confidence,
+        )
 
         board_state = BoardState(pieces=pieces, dice=dice_value, turn=turn, timestamp=time.time())
         snapshot = LudoBoardSnapshot(
@@ -119,6 +137,7 @@ class LudoStatePipeline:
         if visualize_dir is not None:
             self._save_visualization(Path(visualize_dir), image_name, rectified, snapshot)
 
+        logger.debug("LudoStatePipeline.run: snapshot ready for turn=%s, dice=%d", turn, dice_value)
         return snapshot
 
     def _save_visualization(

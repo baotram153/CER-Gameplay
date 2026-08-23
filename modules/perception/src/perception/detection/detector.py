@@ -1,12 +1,15 @@
 """Thin wrapper around an Ultralytics YOLO model for object detection."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from torchvision.ops import batched_nms
 from ultralytics import YOLO
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,17 +41,23 @@ class ObjectDetector:
             model_source = str(weights_path)
         elif fallback_weights is not None:
             model_source = fallback_weights
+            logger.debug("ObjectDetector: %s not found, falling back to %r", weights_path, fallback_weights)
         else:
             raise FileNotFoundError(
                 f"No checkpoint at {weights_path} and fallback_weights is null; "
                 "fine-tune a checkpoint or set a fallback_weights value."
             )
+        logger.debug(
+            "ObjectDetector: loading %r (device=%r, conf_threshold=%.3f, iou_threshold=%.3f)",
+            model_source, device, conf_threshold, iou_threshold,
+        )
         self.model = YOLO(model_source)
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
         self.device = device
 
     def detect(self, image: np.ndarray) -> list[Detection]:
+        logger.debug("ObjectDetector.detect: input image shape=%s", image.shape)
         results = self.model.predict(
             image,
             conf=self.conf_threshold,
@@ -58,8 +67,10 @@ class ObjectDetector:
         )[0]
 
         boxes = results.boxes
+        logger.debug("ObjectDetector.detect: %d box(es) before IoU dedup", len(boxes))
         keep = batched_nms(boxes.xyxy, boxes.conf, boxes.cls, self.iou_threshold)   # Ultralytics skips IoU-based suppression internally for yolo26n -> redo it here
         keypoints = results.keypoints
+        logger.debug("ObjectDetector.detect: %d box(es) after IoU dedup", len(keep))
 
         detections = []
         for idx in keep.tolist():

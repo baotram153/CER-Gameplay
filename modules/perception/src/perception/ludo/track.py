@@ -1,8 +1,12 @@
 """Ludo (cờ cá ngựa) track topology: physical board cell -> per-color path position."""
 from __future__ import annotations
 
+import logging
+
 from common.constants import CellKind, Color
 from common.type import TrackCell
+
+logger = logging.getLogger(__name__)
 
 
 def load_track_cells(board_config: dict, board_rect: tuple[int, int, int, int]) -> list[TrackCell]:
@@ -26,6 +30,10 @@ def load_track_cells(board_config: dict, board_rect: tuple[int, int, int, int]) 
                 home_step=entry.get("home_step"),
             )
         )
+    logger.debug(
+        "load_track_cells: built %d cell(s) for board_rect=%s (kinds=%s)",
+        len(cells), board_rect, {kind.value: sum(1 for c in cells if c.kind == kind) for kind in CellKind},
+    )
     return cells
 
 

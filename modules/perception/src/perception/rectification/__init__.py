@@ -1,12 +1,15 @@
 """Board rectification: raw camera image -> top-down, board-cut image."""
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 import numpy as np
 
 from .aruco import CornerTracker, detect_corner_markers
 from .homography import compute_homography, fit_to_frame, warp
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "detect_corner_markers",
@@ -42,9 +45,11 @@ def rectify_image(
 
     corners = corner_detector(image, aruco_cfg["dictionary"], aruco_cfg["corner_marker_ids"])
     if corners is None:
+        logger.debug("rectify_image: corners not found, returning None")
         return None
 
     homography = compute_homography(corners, output_size)
+    logger.debug("rectify_image: warping to output_size=%s", output_size)
     return warp(image, homography, output_size)
 
 
@@ -70,6 +75,7 @@ def rectify_keep_frame(
 
     corners = corner_detector(image, aruco_cfg["dictionary"], aruco_cfg["corner_marker_ids"])
     if corners is None:
+        logger.debug("rectify_keep_frame: corners not found, returning (None, None)")
         return None, None
 
     homography = compute_homography(corners, output_size)
@@ -77,6 +83,9 @@ def rectify_keep_frame(
     homography, canvas_size, (tx, ty) = fit_to_frame(homography, frame_size)
     rectified = warp(image, homography, canvas_size)
     board_rect = (round(tx), round(ty), output_size[0], output_size[1])
+    logger.debug(
+        "rectify_keep_frame: canvas_size=%s, board_rect=%s", canvas_size, board_rect
+    )
     return rectified, board_rect
 
 

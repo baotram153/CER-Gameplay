@@ -42,6 +42,12 @@ perception:
   # Path (relative to the repo root, or absolute) to the game's inference
   # config -- see modules/perception/configs/ludo/inference.example.yaml.
   inference_config: modules/perception/configs/ludo/inference.yaml
+  # Path to RollDetector's motion/stability/validity hyperparameters -- see
+  # modules/perception/configs/ludo/roll_detection.example.yaml. Used by
+  # Wait for dice to confirm a settled, genuinely NEW roll (rejecting a
+  # stale die reading left over from a previous turn) instead of trusting
+  # a single noisy snapshot.
+  roll_detection_config: modules/perception/configs/ludo/roll_detection.yaml
   # If set, every capture() attempt writes its rectified frame + a
   # boxes-drawn copy + a state JSON here (see LudoStatePipeline.run). Handy
   # for debugging a live run; leave null to skip the extra disk I/O.
@@ -56,7 +62,15 @@ manipulation:
   require_confirmation: true
 
 logging:
-  level: INFO
+  # What's captured to this run's files (robot_controller.log, combined,
+  # plus one file per module under modules/). DEBUG gets you full
+  # per-step tracing from the perception pipeline; INFO is just the
+  # high-level phase/action log lines.
+  level: DEBUG
+  # What's also echoed to the terminal -- independent of `level` above,
+  # and usually higher/quieter so a live run's console stays readable
+  # while the files still capture everything at `level`.
+  console_level: INFO
   log_dir: logs
   file_name: robot_controller.log
   max_bytes: 5000000

@@ -14,7 +14,10 @@ VALID_CONFIG = {
         "player_roles": {"green": "robot", "yellow": "human", "red": "human", "blue": "human"},
     },
     "camera": {"backend": "directory", "directory": "some/frames"},
-    "perception": {"inference_config": "modules/perception/configs/ludo/inference.yaml"},
+    "perception": {
+        "inference_config": "modules/perception/configs/ludo/inference.yaml",
+        "roll_detection_config": "modules/perception/configs/ludo/roll_detection.yaml",
+    },
 }
 
 

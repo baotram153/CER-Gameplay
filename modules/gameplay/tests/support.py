@@ -10,13 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from common.constants import Color
-from common.type import BoardState, Move, ValidationResult
+from common.type import BoardState, Move, Piece, ValidationResult
 
 
 @dataclass
 class ScriptedPerception:
-    """Returns each entry of `script` in turn on successive capture() calls;
-    a None entry simulates an unreadable frame."""
+    """Returns each entry of `script` in turn on successive capture()/
+    capture_roll() calls (both draw from the same script/calls sequence,
+    since no test currently exercises both on one instance); a None entry
+    simulates an unreadable frame or an unconfirmed roll."""
 
     script: list[BoardState | None]
     calls: list[Color] = field(default_factory=list)
@@ -24,6 +26,9 @@ class ScriptedPerception:
     def capture(self, turn: Color) -> BoardState | None:
         self.calls.append(turn)
         return self.script[len(self.calls) - 1]
+
+    def capture_roll(self, turn: Color, expected_pieces: list[Piece]) -> BoardState | None:
+        return self.capture(turn)
 
 
 @dataclass

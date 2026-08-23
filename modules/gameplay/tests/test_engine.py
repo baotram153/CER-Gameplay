@@ -105,6 +105,9 @@ def test_run_raises_if_max_steps_exceeded():
         def capture(self, turn: Color) -> None:
             return None
 
+        def capture_roll(self, turn: Color, expected_pieces) -> None:
+            return None
+
     engine = GameplayEngine(game, ROLES, _AlwaysUnreadablePerception(), ScriptedManipulation())
 
     with pytest.raises(GameplayError):

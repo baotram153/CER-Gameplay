@@ -20,7 +20,8 @@ from gameplay.errors import GameplayError
 from gameplay.move_selection import action_planner_move_selector
 from gameplay.phase import GamePhase
 from gameplay.result import GameResult
-from perception.ludo import LudoStatePipeline
+from perception.ludo import LudoStatePipeline, RollDetector
+from perception.rectification import BoardRectifier
 from reasoning.game_engine import GameState
 
 from .adapters.manipulation_adapter import ConsoleManipulationAdapter
@@ -33,6 +34,7 @@ from .console_keys import ConsoleKeyDispatcher
 from .debug_window import DebugWindow
 from .detection_recorder import DetectionResultRecorder
 from .errors import CameraError
+from .logging_context import set_current_turn
 from .snapshot_saver import SnapshotSaver
 
 logger = logging.getLogger(__name__)
@@ -110,9 +112,26 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
     pipeline = _load_ludo_pipeline(config.perception.inference_config)
     key_dispatcher, snapshot_saver, detection_recorder = _build_key_dispatcher(config)
 
+    # A BoardRectifier of its own (rather than reaching into pipeline's
+    # private one) so RollDetector's per-frame corner lookups during Wait
+    # for stability get the same ROI-caching speedup LudoStatePipeline.run
+    # gets for its own reads -- see BoardRectifier's docstring. capture()
+    # and capture_roll() are never hot at the same time (different
+    # gameplay phases), so a cold corner-detection pass when switching
+    # between them is a one-off cost, not a steady-state one.
+    roll_detector = RollDetector.from_config_file(
+        config.perception.roll_detection_config,
+        detector=pipeline.detector,
+        board_config=pipeline.board_config,
+        entry_offsets=pipeline.entry_offsets,
+        num_shared_steps=pipeline.num_shared_steps,
+        rectify=BoardRectifier().rectify_keep_frame,
+    )
+
     perception = LudoPerceptionAdapter(
         camera=camera,
         pipeline=pipeline,
+        roll_detector=roll_detector,
         visualize_dir=config.perception.visualize_dir,
         key_dispatcher=key_dispatcher,
         snapshot_saver=snapshot_saver,
@@ -197,6 +216,7 @@ def _run_loop(engine: GameplayEngine, config: AppConfig) -> GameResult | None:
     stuck_attempts = 0
 
     for step_count in range(1, config.runtime.max_steps + 1):
+        set_current_turn(engine.context.game.current_turn)
         try:
             phase = engine.step()
         except CameraError:

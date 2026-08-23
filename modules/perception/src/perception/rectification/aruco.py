@@ -1,8 +1,12 @@
 """ArUco-marker-based detection of the board's 4 physical corners."""
 from __future__ import annotations
 
+import logging
+
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # Corner order expected everywhere downstream.
 CORNER_ORDER = ("top_left", "top_right", "bottom_right", "bottom_left")
@@ -130,6 +134,10 @@ def detect_corner_markers(
             for marker_id, corner_pts in _detect_in_roi(gray, detector, remaining_ids, origin).items():
                 id_to_corners[marker_id] = corner_pts
                 remaining_ids.discard(marker_id)
+        logger.debug(
+            "detect_corner_markers: ROI fast path found %d/%d marker(s)",
+            len(id_to_corners), len(corner_marker_ids),
+        )
 
     for scale in DETECTION_SCALES:
         if all(marker_id in id_to_corners for marker_id in corner_marker_ids):
@@ -138,15 +146,24 @@ def detect_corner_markers(
             gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
         )
         corners, ids, _ = detector.detectMarkers(scaled_gray)
-        if ids is None:
-            continue
-        for marker_id, corner_pts in zip(ids.flatten(), corners):
-            marker_id = int(marker_id)
-            if marker_id in corner_marker_ids and marker_id not in id_to_corners:
-                id_to_corners[marker_id] = corner_pts.reshape(4, 2) / scale
+        found_this_scale = 0
+        if ids is not None:
+            for marker_id, corner_pts in zip(ids.flatten(), corners):
+                marker_id = int(marker_id)
+                if marker_id in corner_marker_ids and marker_id not in id_to_corners:
+                    id_to_corners[marker_id] = corner_pts.reshape(4, 2) / scale
+                    found_this_scale += 1
+        logger.debug(
+            "detect_corner_markers: full-frame sweep at scale=%.2f found %d new marker(s), %d/%d total",
+            scale, found_this_scale, len(id_to_corners), len(corner_marker_ids),
+        )
 
     found_ids = [marker_id for marker_id in corner_marker_ids if marker_id in id_to_corners]
     if len(found_ids) != 4:
+        logger.debug(
+            "detect_corner_markers: only found %d/4 corner markers (ids=%s); giving up this frame",
+            len(found_ids), found_ids,
+        )
         return None
     marker_pts = np.stack([id_to_corners[marker_id] for marker_id in found_ids])
     centroids = marker_pts.mean(axis=1)
@@ -169,6 +186,7 @@ def detect_corner_markers(
         marker_idx = np.argmin(corner_scores[corner_name](centroids))
         marker_corners = marker_pts[marker_idx]
         result[corner_name] = marker_corners[np.argmin(corner_scores[corner_name](marker_corners))]
+    logger.debug("detect_corner_markers: found all 4 corners: %s", {k: v.tolist() for k, v in result.items()})
     return result
 
 
@@ -188,6 +206,10 @@ class CornerTracker:
     def detect(
         self, image: np.ndarray, dictionary: str, corner_marker_ids: list[int]
     ) -> dict[str, np.ndarray] | None:
+        logger.debug(
+            "CornerTracker.detect: %s previous corners hint",
+            "using" if self._last_corners else "no",
+        )
         result = detect_corner_markers(
             image, dictionary, corner_marker_ids, previous_corners=self._last_corners
         )

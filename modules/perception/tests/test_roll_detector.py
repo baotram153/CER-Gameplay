@@ -179,8 +179,8 @@ def test_from_config_file_wires_a_working_detector_from_the_example_yaml():
         board_config=BOARD_CONFIG,
         entry_offsets=ENTRY_OFFSETS,
         num_shared_steps=NUM_SHARED_STEPS,
+        rectify=_fake_rectify,
     )
-    roll._rectify = _fake_rectify  # from_config has no rectify param (board/camera-level, not a hyperparameter)
 
     result = None
     for value in (50, 220, 220, 220, 220, 220):  # 1 baseline + config's stability.window (5) readings

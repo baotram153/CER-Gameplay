@@ -10,8 +10,8 @@ import logging
 import numpy as np
 
 from common.constants import Color
-from common.type import BoardState
-from perception.ludo import LudoStatePipeline
+from common.type import BoardState, Piece
+from perception.ludo import LudoStatePipeline, RollDetector
 
 from ..camera.base import FrameSource
 from ..console_keys import ConsoleKeyDispatcher
@@ -51,6 +51,7 @@ class LudoPerceptionAdapter:
         self,
         camera: FrameSource,
         pipeline: LudoStatePipeline,
+        roll_detector: RollDetector | None = None,
         visualize_dir: str | None = None,
         key_dispatcher: ConsoleKeyDispatcher | None = None,
         snapshot_saver: SnapshotSaver | None = None,
@@ -59,6 +60,7 @@ class LudoPerceptionAdapter:
     ) -> None:
         self._camera = camera
         self._pipeline = pipeline
+        self._roll_detector = roll_detector
         self._visualize_dir = visualize_dir
         self._key_dispatcher = key_dispatcher
         self._snapshot_saver = snapshot_saver
@@ -82,10 +84,12 @@ class LudoPerceptionAdapter:
             logger.debug("No camera frame available this tick")
             return None
 
+        self._frame_count += 1
+        logger.debug("capture(): frame #%d, shape=%s, turn=%s", self._frame_count, frame.shape, turn)
+
         if self._snapshot_saver is not None:
             self._snapshot_saver.maybe_save(frame)
 
-        self._frame_count += 1
         image_name = f"frame_{self._frame_count:06d}.png" if self._visualize_dir else None
 
         try:
@@ -104,8 +108,76 @@ class LudoPerceptionAdapter:
         if self._detection_recorder is not None:
             self._detection_recorder.maybe_record(snapshot)
 
+        logger.debug(
+            "capture(): frame #%d succeeded, dice=%d, %d piece observation(s)",
+            self._frame_count, snapshot.board_state.dice, len(snapshot.pieces),
+        )
         self._show_debug(frame)
         return snapshot.board_state
+
+    def capture_roll(self, turn: Color, expected_pieces: list[Piece]) -> BoardState | None:
+        """capture()'s counterpart for Wait for dice: routes the frame
+        through RollDetector instead of LudoStatePipeline.run, so a die
+        that's just sitting there unchanged since the last confirmed roll
+        (nobody actually rolled yet) can't be mistaken for a fresh one --
+        see RollDetector's module docstring for the two-phase motion/
+        stability state machine and its two new-roll validity checks.
+        Same routine-None-on-no-reading contract as capture(); a
+        `roll_detector` is required (see LudoPerceptionAdapter.__init__).
+        """
+        if self._roll_detector is None:
+            raise RuntimeError("capture_roll() called without a roll_detector configured")
+
+        if self._key_dispatcher is not None:
+            self._key_dispatcher.poll()
+
+        try:
+            frame = self._camera.read()
+        except CameraError:
+            raise
+        except Exception:
+            logger.exception("Unexpected camera error during capture_roll(); treating as no reading")
+            return None
+
+        if frame is None:
+            logger.debug("No camera frame available this tick")
+            return None
+
+        self._frame_count += 1
+        logger.debug("capture_roll(): frame #%d, shape=%s, turn=%s", self._frame_count, frame.shape, turn)
+
+        if self._snapshot_saver is not None:
+            self._snapshot_saver.maybe_save(frame)
+
+        try:
+            snapshot = self._roll_detector.step(frame, turn, expected_pieces)
+        except Exception:
+            logger.exception("Unexpected error running the roll detector; treating as no reading")
+            self._show_debug_roll(frame)
+            return None
+
+        self._show_debug_roll(frame)
+
+        if snapshot is None:
+            return None
+
+        if self._detection_recorder is not None:
+            self._detection_recorder.maybe_record(snapshot)
+
+        logger.debug(
+            "capture_roll(): frame #%d confirmed a new roll, dice=%d, %d piece observation(s)",
+            self._frame_count, snapshot.board_state.dice, len(snapshot.pieces),
+        )
+        return snapshot.board_state
+
+    def _show_debug_roll(self, raw_frame: np.ndarray) -> None:
+        if self._debug_window is None:
+            return
+        assert self._roll_detector is not None
+        annotated = self._roll_detector.last_visualization
+        if annotated is None:
+            annotated = self._roll_detector.last_rectified
+        self._debug_window.show(raw_frame, annotated)
 
     def _show_debug(self, raw_frame: np.ndarray) -> None:
         if self._debug_window is None:

@@ -59,6 +59,11 @@ class GameConfig:
 @dataclass(frozen=True)
 class PerceptionConfig:
     inference_config: Path
+    # See modules/perception/configs/ludo/roll_detection.example.yaml --
+    # RollDetector's motion/stability/validity hyperparameters, used by
+    # Wait for dice to confirm a genuinely new, settled roll instead of
+    # trusting a single noisy snapshot (see gameplay.wait_for_dice).
+    roll_detection_config: Path
     visualize_dir: Path | None
 
 
@@ -96,6 +101,11 @@ class LoggingConfig:
     max_bytes: int
     backup_count: int
     console: bool
+    # Independent, usually-higher-than-`level` threshold for the console
+    # handler only -- so e.g. level=DEBUG captures full detail to the
+    # combined + per-module files while the terminal only shows
+    # console_level and up, keeping a live run's terminal output legible.
+    console_level: str
 
 
 @dataclass(frozen=True)
@@ -218,6 +228,7 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
     visualize_dir_raw = perception_raw.get("visualize_dir")
     perception = PerceptionConfig(
         inference_config=_resolve_path(perception_raw["inference_config"]),
+        roll_detection_config=_resolve_path(perception_raw["roll_detection_config"]),
         visualize_dir=_resolve_path(visualize_dir_raw) if visualize_dir_raw else None,
     )
 
@@ -232,6 +243,7 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
         max_bytes=logging_raw.get("max_bytes", 5_000_000),
         backup_count=logging_raw.get("backup_count", 5),
         console=logging_raw.get("console", True),
+        console_level=logging_raw.get("console_level", "INFO"),
     )
 
     runtime = RuntimeConfig(

@@ -60,6 +60,7 @@ from .models import DiceObservation, LudoBoardSnapshot
 from .motion import DEFAULT_BLUR_KERNEL, DEFAULT_DOWNSCALE_SIZE, MotionDetector, frame_signature, signatures_differ
 from .pieces import assign_pieces
 from .track import load_track_cells
+from .visualize import build_boxes_image, draw_cells, draw_piece_detections
 
 RectifyFn = Callable[[np.ndarray, dict], tuple[np.ndarray, tuple[int, int, int, int]] | tuple[None, None]]
 
@@ -106,6 +107,14 @@ class RollDetector:
         self._readings: deque[tuple[int, float, Detection] | None] = deque(maxlen=stability_window)
         self._last_confirmed_signature: np.ndarray | None = None
 
+        # Debug side-channel, mirroring LudoStatePipeline.last_rectified/
+        # last_visualization -- updated on every frame that makes it past
+        # rectification (even during Wait-for-stability, before a roll is
+        # confirmed) so a live debug viewer has an annotated pane to show
+        # instead of just the raw feed. See LudoPerceptionAdapter._show_debug_roll.
+        self.last_rectified: np.ndarray | None = None
+        self.last_visualization: np.ndarray | None = None
+
     @classmethod
     def from_config(
         cls,
@@ -114,6 +123,7 @@ class RollDetector:
         board_config: dict,
         entry_offsets: dict[Color, int],
         num_shared_steps: int,
+        rectify: RectifyFn | None = None,
     ) -> "RollDetector":
         """Builds a fully-wired RollDetector (+ its MotionDetector) from a
         parsed roll_detection.yaml (see configs/ludo/roll_detection.example.yaml
@@ -121,6 +131,10 @@ class RollDetector:
         `num_shared_steps` come from the same place LudoStatePipeline gets
         them (inference.yaml / board.yaml) -- this config only covers the
         roll-detection-specific hyperparameters, not board/model setup.
+        `rectify` defaults to the plain, non-caching rectify_keep_frame;
+        pass a `BoardRectifier().rectify_keep_frame` (bound method) instead
+        to reuse its corner-position caching across calls, the way
+        LudoStatePipeline does for its own reads of the same fixed camera.
         """
         frame_cfg = config["frame_processing"]
         downscale_size = tuple(frame_cfg["downscale_size"])
@@ -136,6 +150,7 @@ class RollDetector:
             downscale_size=downscale_size,
             blur_kernel=blur_kernel,
         )
+        kwargs = {} if rectify is None else {"rectify": rectify}
         return cls(
             detector=detector,
             board_config=board_config,
@@ -148,6 +163,7 @@ class RollDetector:
             downscale_size=downscale_size,
             blur_kernel=blur_kernel,
             motion=motion,
+            **kwargs,
         )
 
     @classmethod
@@ -158,9 +174,10 @@ class RollDetector:
         board_config: dict,
         entry_offsets: dict[Color, int],
         num_shared_steps: int,
+        rectify: RectifyFn | None = None,
     ) -> "RollDetector":
         config = yaml.safe_load(Path(config_path).read_text())
-        return cls.from_config(config, detector, board_config, entry_offsets, num_shared_steps)
+        return cls.from_config(config, detector, board_config, entry_offsets, num_shared_steps, rectify=rectify)
 
     def step(self, raw_frame: np.ndarray, turn: Color, expected_pieces: list[Piece]) -> LudoBoardSnapshot | None:
         """Feed one camera frame in. Returns a confirmed LudoBoardSnapshot
@@ -182,8 +199,20 @@ class RollDetector:
             self._readings.append(None)
             return None
 
+        self.last_rectified = rectified
+
         detections = self.detector.detect(rectified)
-        self._readings.append(_read_dice(self.detector, detections))
+        reading = _read_dice(self.detector, detections)
+        self._readings.append(reading)
+
+        cells = load_track_cells(self.board_config, board_rect)
+        piece_detections = self.detector.pieces(detections)
+        if reading is not None:
+            value, _confidence, dice_detection = reading
+            self.last_visualization = build_boxes_image(rectified, cells, piece_detections, dice_detection, value)
+        else:
+            self.last_visualization = draw_piece_detections(draw_cells(rectified, cells), piece_detections)
+
         if not _is_stable(self._readings, self.min_confidence):
             return None
 

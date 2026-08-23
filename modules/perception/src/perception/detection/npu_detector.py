@@ -93,6 +93,13 @@ class NpuObjectDetector:
         providers: list[str] | None = None,
         provider_options: list[dict] | None = None,
     ) -> None:
+        logger.debug(
+            "NpuObjectDetector: constructing with weights=%r, num_classes=%d, "
+            "num_keypoints=%d, input_size=%d, conf_threshold=%.3f, providers=%r, "
+            "qnn_backend_path=%r",
+            str(weights), num_classes, num_keypoints, input_size, conf_threshold,
+            providers, qnn_backend_path,
+        )
         try:
             import onnxruntime as ort
             import onnxruntime_qnn as qnn_ep
@@ -105,6 +112,11 @@ class NpuObjectDetector:
                 "-device, `pip install onnxruntime` and pass "
                 "providers=['CPUExecutionProvider']."
             ) from exc
+        logger.debug(
+            "NpuObjectDetector: onnxruntime %s, onnxruntime_qnn %s imported; "
+            "available providers before registration=%s",
+            ort.__version__, qnn_ep.__version__, ort.get_available_providers(),
+        )
 
         providers = providers or DEFAULT_QNN_PROVIDERS
         if "QNNExecutionProvider" in providers:
@@ -120,6 +132,11 @@ class NpuObjectDetector:
             ort.register_execution_provider_library(
                 "QNNExecutionProvider", qnn_ep.get_library_path()
             )
+            logger.debug(
+                "NpuObjectDetector: registered QNNExecutionProvider library at %s; "
+                "available providers now=%s",
+                qnn_ep.get_library_path(), ort.get_available_providers(),
+            )
             if qnn_backend_path is None:
                 # Default to the backend .so bundled with *this*
                 # onnxruntime-qnn wheel rather than a bare "libQnnHtp.so":
@@ -130,20 +147,34 @@ class NpuObjectDetector:
                 # ("Unable to find a valid interface for ...") just as
                 # silently under the old API.
                 qnn_backend_path = str(Path(qnn_ep.get_library_path()).parent / "libQnnHtp.so")
+            logger.debug("NpuObjectDetector: resolved qnn_backend_path=%s", qnn_backend_path)
             qnn_devices = [d for d in ort.get_ep_devices() if d.ep_name == "QNNExecutionProvider"]
+            logger.debug("NpuObjectDetector: found %d QNNExecutionProvider device(s)", len(qnn_devices))
             session_options = ort.SessionOptions()
             if qnn_devices:
                 session_options.add_provider_for_devices(
                     qnn_devices, {"backend_path": qnn_backend_path}
                 )
+            else:
+                logger.debug(
+                    "NpuObjectDetector: no QNNExecutionProvider device found -- session will "
+                    "be created with no providers added, falling back to onnxruntime's default"
+                )
             self.session = ort.InferenceSession(str(weights), sess_options=session_options)
         else:
+            logger.debug("NpuObjectDetector: QNN not requested; using providers=%r directly", providers)
             if provider_options is None:
                 provider_options = [{} for _ in providers]
             self.session = ort.InferenceSession(
                 str(weights), providers=providers, provider_options=provider_options
             )
         self.input_name = self.session.get_inputs()[0].name
+        logger.debug(
+            "NpuObjectDetector: session created; input_name=%r, input_shape=%s, output_shapes=%s",
+            self.input_name,
+            self.session.get_inputs()[0].shape,
+            [o.shape for o in self.session.get_outputs()],
+        )
 
         # get_providers() confirms the execution provider registered, not
         # that every node actually landed on it -- individual unsupported
@@ -178,24 +209,43 @@ class NpuObjectDetector:
         self.iou_threshold = iou_threshold
 
     def detect(self, image: np.ndarray) -> list[Detection]:
+        logger.debug("NpuObjectDetector.detect: input image shape=%s dtype=%s", image.shape, image.dtype)
+
         padded, scale, pad_x, pad_y = letterbox(image, self.input_size)
+        logger.debug(
+            "NpuObjectDetector.detect: letterboxed to %s (scale=%.4f, pad_x=%d, pad_y=%d)",
+            padded.shape, scale, pad_x, pad_y,
+        )
         blob = padded[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
         blob = np.expand_dims(blob, 0)
 
         raw = self.session.run(None, {self.input_name: blob})[0]
+        logger.debug("NpuObjectDetector.detect: raw inference output shape=%s", raw.shape)
         raw = raw[0]  # (max_det, 4 + 2 + num_keypoints * 3)
 
         boxes_xyxy = raw[:, :4]
         confidences = raw[:, 4]
         class_ids = raw[:, 5]
+        logger.debug(
+            "NpuObjectDetector.detect: %d candidates, confidence range=[%.4f, %.4f]",
+            len(raw), confidences.min(), confidences.max(),
+        )
 
         keep_mask = confidences > self.conf_threshold
         if not keep_mask.any():
+            logger.debug(
+                "NpuObjectDetector.detect: no candidate above conf_threshold=%.3f -- 0 detections",
+                self.conf_threshold,
+            )
             return []
 
         boxes_xyxy = boxes_xyxy[keep_mask]
         confidences = confidences[keep_mask]
         class_ids = class_ids[keep_mask].round().astype(int)
+        logger.debug(
+            "NpuObjectDetector.detect: %d candidate(s) above conf_threshold=%.3f, class_ids=%s",
+            keep_mask.sum(), self.conf_threshold, class_ids.tolist(),
+        )
 
         keypoints_all = None
         if self.num_keypoints:
@@ -221,4 +271,5 @@ class NpuObjectDetector:
                     keypoints=kpts,
                 )
             )
+        logger.debug("NpuObjectDetector.detect: returning %d detection(s)", len(detections))
         return detections
