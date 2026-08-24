@@ -5,9 +5,9 @@
 # keypoints per detection, kpt_shape [2, 3]. Trained via Auto-Labeling's
 # configs/yolo26l-pose-2kpt.yaml (a sibling repo, not part of this one).
 # The dice bowl sits next to the board in the same raw frame with no corner
-# markers of its own, so rectification keeps the *entire* frame in view
-# (perception.rectification.rectify_keep_frame) instead of a separate
-# dice-bowl rectification.
+# markers of its own, so rectification crops vertically to the board markers
+# while preserving the raw frame's aspect ratio and horizontal context for
+# the bowl (perception.rectification.rectify_keep_frame).
 
 model:
   weights: models/best.pt

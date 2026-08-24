@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 
+import cv2
 import numpy as np
 
 from common.constants import Color
@@ -21,6 +22,11 @@ from ..errors import CameraError
 from ..snapshot_saver import SnapshotSaver
 
 logger = logging.getLogger(__name__)
+
+
+def _rotate_frame_180(frame: np.ndarray) -> np.ndarray:
+    """Correct an upside-down camera frame in place for every consumer."""
+    return cv2.rotate(frame, cv2.ROTATE_180, dst=frame)
 
 
 class LudoPerceptionAdapter:
@@ -58,6 +64,7 @@ class LudoPerceptionAdapter:
         snapshot_saver: SnapshotSaver | None = None,
         detection_recorder: DetectionResultRecorder | None = None,
         debug_window: DebugWindow | None = None,
+        rotate_frame_180: bool = False
     ) -> None:
         self._camera = camera
         self._pipeline = pipeline
@@ -69,6 +76,7 @@ class LudoPerceptionAdapter:
         self._detection_recorder = detection_recorder
         self._debug_window = debug_window
         self._frame_count = 0
+        self._rotate_frame_180 = rotate_frame_180
 
     def capture(self, turn: Color) -> BoardState | None:
         if self._key_dispatcher is not None:
@@ -85,6 +93,8 @@ class LudoPerceptionAdapter:
         if frame is None:
             logger.debug("No camera frame available this tick")
             return None
+        if self._rotate_frame_180:
+            frame = _rotate_frame_180(frame)
 
         self._frame_count += 1
         logger.debug("capture(): frame #%d, shape=%s, turn=%s", self._frame_count, frame.shape, turn)
@@ -144,6 +154,8 @@ class LudoPerceptionAdapter:
         if frame is None:
             logger.debug("No camera frame available this tick")
             return None
+        if self._rotate_frame_180:
+            frame = _rotate_frame_180(frame)
 
         self._frame_count += 1
         logger.debug("capture_roll(): frame #%d, shape=%s, turn=%s", self._frame_count, frame.shape, turn)
@@ -205,6 +217,8 @@ class LudoPerceptionAdapter:
         if frame is None:
             logger.debug("No camera frame available this tick")
             return None
+        if self._rotate_frame_180:
+            frame = _rotate_frame_180(frame)
 
         self._frame_count += 1
         logger.debug("capture_movement(): frame #%d, shape=%s, turn=%s", self._frame_count, frame.shape, turn)

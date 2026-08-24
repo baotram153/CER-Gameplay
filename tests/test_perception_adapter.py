@@ -86,6 +86,21 @@ def _frame() -> np.ndarray:
     return np.zeros((10, 10, 3), dtype=np.uint8)
 
 
+def test_capture_rotates_the_input_frame_for_inference_and_visualization():
+    frame = np.arange(18, dtype=np.uint8).reshape(2, 3, 3)
+    expected = np.rot90(frame.copy(), 2)
+    pipeline = _FakePipeline(result=_FakeSnapshot(_BOARD))
+    window = _FakeDebugWindow()
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame), pipeline=pipeline, debug_window=window
+    )
+
+    adapter.capture(Color.GREEN)
+
+    np.testing.assert_array_equal(pipeline.calls[0][0], expected)
+    np.testing.assert_array_equal(window.calls[0][0], expected)
+
+
 def test_capture_returns_none_when_no_frame_available():
     adapter = LudoPerceptionAdapter(camera=_FakeCamera(frame=None), pipeline=_FakePipeline())
     assert adapter.capture(Color.GREEN) is None

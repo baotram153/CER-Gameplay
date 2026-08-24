@@ -71,6 +71,7 @@ class PerceptionConfig:
     # move instead of trusting a single noisy snapshot.
     movement_detection_config: Path
     visualize_dir: Path | None
+    rotate_frame_180: bool  # whether to rotate the camera frame 180° before processing
 
 
 @dataclass(frozen=True)
@@ -237,6 +238,7 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
         roll_detection_config=_resolve_path(perception_raw["roll_detection_config"]),
         movement_detection_config=_resolve_path(perception_raw["movement_detection_config"]),
         visualize_dir=_resolve_path(visualize_dir_raw) if visualize_dir_raw else None,
+        rotate_frame_180=bool(perception_raw.get("rotate_frame_180", False))
     )
 
     manipulation = ManipulationConfig(

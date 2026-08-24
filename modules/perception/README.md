@@ -40,10 +40,10 @@ from this directory.
 
 Make sure all the boards have ArUco markers attached in the 4 corners.
 Ludo's dice bowl sits next to the board in the same raw frame with no
-corner markers of its own — rectification keeps the *entire* frame in view
-(`perception.rectification.rectify_keep_frame`) instead of cropping to the
-board quad, so the bowl stays visible for detection without needing a
-separate rectification pass.
+corner markers of its own — rectification crops vertically to the board's
+marker bounds while preserving the raw frame's aspect ratio
+(`perception.rectification.rectify_keep_frame`), so horizontal context for
+the bowl stays visible without needing a separate rectification pass.
 
 Board-layout configs (`board.yaml`) are shared with `game_engine` and live
 under `../common/configs/<game>/` instead of this module's own `configs/`.

@@ -53,16 +53,49 @@ def rectify_image(
     return warp(image, homography, output_size)
 
 
+def _crop_to_board_height(
+    image: np.ndarray,
+    board_rect: tuple[int, int, int, int],
+    raw_size: tuple[int, int],
+) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """Crop to the board's vertical extent while retaining raw aspect ratio."""
+    board_x, board_y, board_width, board_height = board_rect
+    raw_width, raw_height = raw_size
+    crop_width = max(1, round(board_height * raw_width / raw_height))
+    crop_x = (image.shape[1] - crop_width) // 2
+    crop_y = board_y
+
+    # Intersect the requested crop with the warped canvas. Normally this is
+    # a pure crop; padding only occurs when perspective expansion makes the
+    # warped canvas narrower than the requested raw-frame aspect ratio.
+    src_x0 = max(0, crop_x)
+    src_y0 = max(0, crop_y)
+    src_x1 = min(image.shape[1], crop_x + crop_width)
+    src_y1 = min(image.shape[0], crop_y + board_height)
+
+    cropped = np.zeros((board_height, crop_width, *image.shape[2:]), dtype=image.dtype)
+    dst_x0 = src_x0 - crop_x
+    dst_y0 = src_y0 - crop_y
+    cropped[
+        dst_y0 : dst_y0 + (src_y1 - src_y0),
+        dst_x0 : dst_x0 + (src_x1 - src_x0),
+    ] = image[src_y0:src_y1, src_x0:src_x1]
+
+    return cropped, (board_x - crop_x, 0, board_width, board_height)
+
+
 def rectify_keep_frame(
     image: np.ndarray,
     board_config: dict,
     *,
     corner_detector: CornerDetectorFn = detect_corner_markers,
 ) -> tuple[np.ndarray, tuple[int, int, int, int]] | tuple[None, None]:
-    """Like `rectify_image`, but keeps the *entire* warped frame instead of
-    cropping to the board's own corners (e.g. so a dice bowl sitting next to
-    the board, outside its corners, stays in view) — mirrors Auto-Labeling's
-    rectification, which this checkpoint's training data was produced with.
+    """Like `rectify_image`, but retains horizontal context beside the board.
+
+    The result is cropped vertically to the board's top/bottom ArUco markers.
+    Its horizontal extent is centered in the warped frame and sized to retain
+    the raw input frame's aspect ratio, keeping useful context such as a dice
+    bowl beside the board.
 
     Returns (rectified_image, board_rect), where board_rect =
     (x_offset, y_offset, width, height) locates the board's own
@@ -83,8 +116,10 @@ def rectify_keep_frame(
     homography, canvas_size, (tx, ty) = fit_to_frame(homography, frame_size)
     rectified = warp(image, homography, canvas_size)
     board_rect = (round(tx), round(ty), output_size[0], output_size[1])
+    rectified, board_rect = _crop_to_board_height(rectified, board_rect, frame_size)
     logger.debug(
-        "rectify_keep_frame: canvas_size=%s, board_rect=%s", canvas_size, board_rect
+        "rectify_keep_frame: canvas_size=%s, cropped_size=%s, board_rect=%s",
+        canvas_size, (rectified.shape[1], rectified.shape[0]), board_rect,
     )
     return rectified, board_rect
 

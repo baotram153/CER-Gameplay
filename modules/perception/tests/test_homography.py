@@ -2,7 +2,30 @@ import cv2
 import numpy as np
 import pytest
 
+from perception.rectification import rectify_keep_frame
 from perception.rectification.homography import compute_homography, fit_to_frame, warp
+
+
+def test_rectify_keep_frame_crops_to_board_height_and_raw_aspect_ratio():
+    image = np.zeros((120, 200, 3), dtype=np.uint8)
+    corners = {
+        "top_left": np.array([50, 10]),
+        "top_right": np.array([149, 10]),
+        "bottom_right": np.array([149, 109]),
+        "bottom_left": np.array([50, 109]),
+    }
+    config = {
+        "aruco": {"dictionary": "unused", "corner_marker_ids": [0, 1, 2, 3]},
+        "rectification": {"output_size": [100, 100]},
+    }
+
+    rectified, board_rect = rectify_keep_frame(
+        image, config, corner_detector=lambda *_: corners
+    )
+
+    assert rectified.shape == (100, 167, 3)
+    assert rectified.shape[1] / rectified.shape[0] == pytest.approx(200 / 120, abs=0.01)
+    assert board_rect == (34, 0, 100, 100)
 
 
 def test_compute_homography_maps_corners_to_rectangle():

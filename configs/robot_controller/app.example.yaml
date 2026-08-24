@@ -57,6 +57,7 @@ perception:
   # boxes-drawn copy + a state JSON here (see LudoStatePipeline.run). Handy
   # for debugging a live run; leave null to skip the extra disk I/O.
   visualize_dir: null
+  rotate_frame_180: true
 
 manipulation:
   # No physical actuator exists yet (see modules/manipulation) -- a human

@@ -162,6 +162,7 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
         snapshot_saver=snapshot_saver,
         detection_recorder=detection_recorder,
         debug_window=debug_window,
+        rotate_frame_180=config.perception.rotate_frame_180,
     )
     manipulation = ConsoleManipulationAdapter(require_confirmation=config.manipulation.require_confirmation)
 
