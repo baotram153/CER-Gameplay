@@ -65,7 +65,7 @@ from common.type import BoardState, Piece, TrackCell
 from ..detection import Detection
 from ..rectification import rectify_keep_frame
 from .detector import LudoDetector
-from .dice import pick_dice_value
+from .dice_reader import DiceReader, ModelDiceReader
 from .models import DiceObservation, LudoBoardSnapshot, PieceObservation
 from .motion import DEFAULT_BLUR_KERNEL, DEFAULT_DOWNSCALE_SIZE, MotionDetector, changed_ratio, frame_signature
 from .pieces import assign_pieces
@@ -103,8 +103,11 @@ class MovementDetector:
         motion: MotionDetector | None = None,
         rectify: RectifyFn = rectify_keep_frame,
         validity_enabled: bool = True,
+        dice_reader: DiceReader | None = None,
     ) -> None:
         self.detector = detector
+        # See RollDetector's identical dice_reader comment/rationale.
+        self._dice_reader = dice_reader or ModelDiceReader(detector)
         self.board_config = board_config
         self.entry_offsets = entry_offsets
         self.num_shared_steps = num_shared_steps
@@ -144,11 +147,14 @@ class MovementDetector:
         entry_offsets: dict[Color, int],
         num_shared_steps: int,
         rectify: RectifyFn | None = None,
+        dice_reader: DiceReader | None = None,
     ) -> "MovementDetector":
         """Builds a fully-wired MovementDetector (+ its MotionDetector)
         from a parsed movement_detection.yaml (see
         configs/ludo/movement_detection.example.yaml for the schema) --
-        same shape as RollDetector.from_config."""
+        same shape as RollDetector.from_config. `dice_reader` should be
+        the same LudoStatePipeline.dice_reader instance RollDetector/
+        LudoStatePipeline use -- see robot_controller.app.build_engine."""
         frame_cfg = config["frame_processing"]
         downscale_size = tuple(frame_cfg["downscale_size"])
         blur_kernel = tuple(frame_cfg["blur_kernel"])
@@ -179,6 +185,7 @@ class MovementDetector:
             blur_kernel=blur_kernel,
             motion=motion,
             validity_enabled=validity_cfg.get("enabled", True),
+            dice_reader=dice_reader,
             **kwargs,
         )
 
@@ -191,9 +198,13 @@ class MovementDetector:
         entry_offsets: dict[Color, int],
         num_shared_steps: int,
         rectify: RectifyFn | None = None,
+        dice_reader: DiceReader | None = None,
     ) -> "MovementDetector":
         config = yaml.safe_load(Path(config_path).read_text())
-        return cls.from_config(config, detector, board_config, entry_offsets, num_shared_steps, rectify=rectify)
+        return cls.from_config(
+            config, detector, board_config, entry_offsets, num_shared_steps,
+            rectify=rectify, dice_reader=dice_reader,
+        )
 
     def step(self, raw_frame: np.ndarray, turn: Color, expected_dice: int) -> LudoBoardSnapshot | None:
         """Feed one camera frame in. Returns a confirmed LudoBoardSnapshot
@@ -243,7 +254,7 @@ class MovementDetector:
         _key, confidence, pieces, piece_observations = stable
 
         try:
-            dice_value, dice_detection = pick_dice_value(self.detector.dice_candidates(detections))
+            dice_value, dice_detection = self._dice_reader.read(rectified, detections)
         except ValueError:
             dice_value, dice_detection = None, None
 

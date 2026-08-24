@@ -73,7 +73,7 @@ from common.type import BoardState, Piece
 from ..detection import Detection
 from ..rectification import rectify_keep_frame
 from .detector import LudoDetector
-from .dice import pick_dice_value
+from .dice_reader import DiceReader, ModelDiceReader
 from .models import DiceObservation, LudoBoardSnapshot
 from .motion import DEFAULT_BLUR_KERNEL, DEFAULT_DOWNSCALE_SIZE, MotionDetector, changed_ratio, frame_signature
 from .pieces import assign_pieces
@@ -109,8 +109,15 @@ class RollDetector:
         rectify: RectifyFn = rectify_keep_frame,
         active_colors: set[Color] | None = None,
         validity_enabled: bool = True,
+        dice_reader: DiceReader | None = None,
     ) -> None:
         self.detector = detector
+        # Defaults to reading the die off `detector`'s own dice_<1-6>
+        # classes (today's only behavior) -- pass a
+        # dice_reader.PipCountingDiceReader instead for the classical-CV
+        # ROI+pip-counting alternative. See dice_reader.build_dice_reader
+        # for the config-driven choice robot_controller.app wires up.
+        self._dice_reader = dice_reader or ModelDiceReader(detector)
         self.board_config = board_config
         self.entry_offsets = entry_offsets
         self.num_shared_steps = num_shared_steps
@@ -181,6 +188,7 @@ class RollDetector:
         num_shared_steps: int,
         rectify: RectifyFn | None = None,
         active_colors: set[Color] | None = None,
+        dice_reader: DiceReader | None = None,
     ) -> "RollDetector":
         """Builds a fully-wired RollDetector (+ its MotionDetector) from a
         parsed roll_detection.yaml (see configs/ludo/roll_detection.example.yaml
@@ -193,7 +201,11 @@ class RollDetector:
         to reuse its corner-position caching across calls, the way
         LudoStatePipeline does for its own reads of the same fixed camera.
         `active_colors` is this game's actual players (e.g. config.game.players)
-        -- see RollDetector.__init__.
+        -- see RollDetector.__init__. `dice_reader` defaults to reading the
+        die off `detector`'s own classes; pass the same
+        LudoStatePipeline.dice_reader instance MovementDetector/
+        LudoStatePipeline use, so every dice-reading call site agrees on
+        model-vs-pip-counting (see robot_controller.app.build_engine).
         """
         frame_cfg = config["frame_processing"]
         downscale_size = tuple(frame_cfg["downscale_size"])
@@ -226,6 +238,7 @@ class RollDetector:
             motion=motion,
             active_colors=active_colors,
             validity_enabled=validity_cfg.get("enabled", True),
+            dice_reader=dice_reader,
             **kwargs,
         )
 
@@ -239,11 +252,12 @@ class RollDetector:
         num_shared_steps: int,
         rectify: RectifyFn | None = None,
         active_colors: set[Color] | None = None,
+        dice_reader: DiceReader | None = None,
     ) -> "RollDetector":
         config = yaml.safe_load(Path(config_path).read_text())
         return cls.from_config(
             config, detector, board_config, entry_offsets, num_shared_steps,
-            rectify=rectify, active_colors=active_colors,
+            rectify=rectify, active_colors=active_colors, dice_reader=dice_reader,
         )
 
     def force_wait_for_stability(self) -> None:
@@ -290,7 +304,7 @@ class RollDetector:
         self.last_rectified = rectified
 
         detections = self.detector.detect(rectified)
-        reading = _read_dice(self.detector, detections)
+        reading = _read_dice(self._dice_reader, rectified, detections)
         self._readings.append(reading)
 
         cells = load_track_cells(self.board_config, board_rect)
@@ -395,9 +409,11 @@ class RollDetector:
         return None
 
 
-def _read_dice(detector: LudoDetector, detections: list[Detection]) -> tuple[int, float, Detection] | None:
+def _read_dice(
+    dice_reader: DiceReader, rectified: np.ndarray, detections: list[Detection]
+) -> tuple[int, float, Detection] | None:
     try:
-        value, det = pick_dice_value(detector.dice_candidates(detections))
+        value, det = dice_reader.read(rectified, detections)
     except ValueError:
         return None
     return (value, det.confidence, det)

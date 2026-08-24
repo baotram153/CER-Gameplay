@@ -17,7 +17,7 @@ from common.type import BoardState
 
 from ..rectification import DEFAULT_FULL_SWEEP_BACKOFF, DEFAULT_MAX_CONSECUTIVE_MISSES, BoardRectifier
 from .detector import LudoDetector
-from .dice import pick_dice_value
+from .dice_reader import build_dice_reader
 from .models import DiceObservation, LudoBoardSnapshot
 from .pieces import assign_pieces
 from .track import load_track_cells
@@ -44,6 +44,15 @@ class LudoStatePipeline:
             num_keypoints=model_cfg.get("num_keypoints", 2),
             qnn_backend_path=model_cfg.get("qnn_backend_path"),
         )
+
+        # "model" (the die is just another one of the checkpoint's own
+        # classes, the default) or "pip_counting" (classical CV against a
+        # fixed ROI) -- see dice_reader.build_dice_reader and this
+        # config's own dice_reading section for the schema. Shared by
+        # every dice-reading call site (this pipeline's own run(), plus
+        # RollDetector/MovementDetector -- see robot_controller.app's
+        # build_engine, which threads this same instance through to both).
+        self.dice_reader = build_dice_reader(inference_config.get("dice_reading", {}), self.detector)
 
         # A gameplay session's camera+board are physically fixed, so corner
         # positions barely move between run() calls -- BoardRectifier
@@ -112,16 +121,15 @@ class LudoStatePipeline:
 
         detections = self.detector.detect(rectified)
         piece_detections = self.detector.pieces(detections)
-        dice_candidates = self.detector.dice_candidates(detections)
         logger.debug(
-            "LudoStatePipeline.run: %d raw detection(s) -> %d piece(s), %d dice candidate(s)",
-            len(detections), len(piece_detections), len(dice_candidates),
+            "LudoStatePipeline.run: %d raw detection(s) -> %d piece(s)",
+            len(detections), len(piece_detections),
         )
 
         pieces, piece_observations = assign_pieces(
             piece_detections, cells, self.entry_offsets, self.num_shared_steps
         )
-        dice_value, dice_detection = pick_dice_value(dice_candidates)
+        dice_value, dice_detection = self.dice_reader.read(rectified, detections)
         logger.debug(
             "LudoStatePipeline.run: assigned %d piece(s) to cells, dice_value=%d (confidence=%.3f)",
             len(piece_observations), dice_value, dice_detection.confidence,

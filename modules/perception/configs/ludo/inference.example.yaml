@@ -47,3 +47,42 @@ model:
     9: dice_6
 
 board_config: ../common/configs/ludo/board.yaml
+
+dice_reading:
+  # "model" (default): the die is just one more of the checkpoint's own
+  # classes (dice_<1-6> above) -- free, since piece detection already ran
+  # this same inference pass. "pip_counting": classical CV instead --
+  # crops a fixed ROI and counts pips via adaptive thresholding + contour
+  # filtering, ignoring the model's dice_<1-6> classes entirely. Useful as
+  # a fallback/cross-check if the model's dice classes turn out unreliable
+  # -- see perception.ludo.dice_reader for both implementations. Applies
+  # everywhere a die gets read (LudoStatePipeline.run, RollDetector,
+  # MovementDetector -- see robot_controller.app.build_engine, which wires
+  # this same LudoStatePipeline.dice_reader instance through to all three).
+  method: model
+  pip_counting:
+    # (x, y, w, h) in pixels, in the RECTIFIED frame's coordinate space --
+    # i.e. after perception.rectification.rectify_keep_frame, which keeps
+    # horizontal context beside the board (the dice bowl) rather than
+    # cropping to just the board itself. Re-measure this whenever the
+    # camera or board physically moves; log perception.ludo.dice_reader at
+    # DEBUG and check pip counts/confidence against a few known rolls
+    # before trusting a new ROI.
+    roi: [1041, 285, 410, 460]
+    # Gaussian-weighted adaptive-threshold window (must be odd) and
+    # constant subtracted from it -- see cv2.adaptiveThreshold. Bigger
+    # block_size copes with a more gradual lighting falloff across the
+    # bowl; bigger c makes the threshold stricter (fewer, darker pixels
+    # count as "pip").
+    block_size: 51
+    c: 10
+    # Contour area (px^2, in the ROI's own resolution) a blob must fall
+    # within to be considered a pip candidate at all -- filters out both
+    # single-pixel noise and the die's own edge/face-boundary contours.
+    min_pip_area: 30.0
+    max_pip_area: 2000.0
+    # 4*pi*area/perimeter^2 -- 1.0 for a perfect circle. A real pip is
+    # close to circular; this rejects elongated/irregular contours (a
+    # shadow, glare, or two touching pips merged into one blob) that
+    # happened to fall in the area range above.
+    min_circularity: 0.6

@@ -134,6 +134,7 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
             full_sweep_backoff=aruco_cfg.get("full_sweep_backoff", DEFAULT_FULL_SWEEP_BACKOFF),
         ).rectify_keep_frame,
         active_colors=set(config.game.players),
+        dice_reader=pipeline.dice_reader,
     )
 
     # Same rationale as roll_detector's own BoardRectifier above -- a
@@ -151,6 +152,7 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
             max_consecutive_misses=aruco_cfg.get("max_consecutive_misses", DEFAULT_MAX_CONSECUTIVE_MISSES),
             full_sweep_backoff=aruco_cfg.get("full_sweep_backoff", DEFAULT_FULL_SWEEP_BACKOFF),
         ).rectify_keep_frame,
+        dice_reader=pipeline.dice_reader,
     )
 
     stall_image_logger = (
