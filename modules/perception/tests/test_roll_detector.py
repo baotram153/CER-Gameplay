@@ -190,6 +190,42 @@ def test_a_moved_piece_invalidates_the_roll():
     assert result is None
 
 
+def test_a_moved_piece_confirms_anyway_when_validity_disabled():
+    # Same setup as test_a_moved_piece_invalidates_the_roll, but with the
+    # escape hatch on: a pieces-moved mismatch shouldn't block confirmation.
+    stable_reading = [_dice_detection()]
+    roll = _roll_detector(frames=[stable_reading, stable_reading, stable_reading], validity_enabled=False)
+    moved_pieces = [Piece(color=Color.RED, pos=5)] + ALL_YARDED[1:]
+
+    roll.step(_frame(50), Color.RED, moved_pieces)
+    roll.step(_frame(220), Color.RED, moved_pieces)
+    roll.step(_frame(220), Color.RED, moved_pieces)
+    result = roll.step(_frame(220), Color.RED, moved_pieces)
+
+    assert result is not None
+    assert result.board_state.dice == 3
+
+
+def test_repeated_confirmed_frame_confirms_anyway_when_validity_disabled():
+    # Same setup as test_repeating_the_exact_previous_confirmed_frame_is_invalid,
+    # but with the escape hatch on: a pixel-identical repeat of the last
+    # confirmed frame shouldn't block confirmation either.
+    stable_reading = [_dice_detection()]
+    roll = _roll_detector(frames=[stable_reading] * 6, validity_enabled=False)
+
+    roll.step(_frame(50), Color.RED, ALL_YARDED)
+    roll.step(_frame(220), Color.RED, ALL_YARDED)
+    roll.step(_frame(220), Color.RED, ALL_YARDED)
+    first = roll.step(_frame(220), Color.RED, ALL_YARDED)
+    assert first is not None
+
+    roll.step(_frame(60), Color.RED, ALL_YARDED)
+    roll.step(_frame(220), Color.RED, ALL_YARDED)
+    roll.step(_frame(220), Color.RED, ALL_YARDED)
+    second = roll.step(_frame(220), Color.RED, ALL_YARDED)
+    assert second is not None
+
+
 def test_an_invalid_confirm_retries_before_giving_up():
     # The first _confirm attempt sees a stray moved piece (Invalid); the
     # very next frame's expected_pieces reflects the board catching up --

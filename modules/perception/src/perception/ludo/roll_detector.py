@@ -108,6 +108,7 @@ class RollDetector:
         motion: MotionDetector | None = None,
         rectify: RectifyFn = rectify_keep_frame,
         active_colors: set[Color] | None = None,
+        validity_enabled: bool = True,
     ) -> None:
         self.detector = detector
         self.board_config = board_config
@@ -138,6 +139,15 @@ class RollDetector:
         # for why a single Invalid frame doesn't necessarily mean the
         # whole roll should be discarded.
         self.max_confirm_attempts = max_confirm_attempts
+        # Skips both checks below entirely when False -- any stable
+        # reading confirms immediately. An escape hatch for a rig where
+        # the checks themselves (not the motion/stability gating before
+        # them) are costing turnaround time, e.g. a noisy camera that
+        # keeps tripping the pieces-moved check on a roll that's actually
+        # fine. Loses the "reject a stale/repeated reading" and
+        # "reject a roll that's actually a move" protections those checks
+        # exist for -- see this class's own module docstring.
+        self._validity_enabled = validity_enabled
         # Must match whatever `motion` (if injected) itself uses -- both
         # feed frame_signature, and signatures computed at different
         # sizes/blur aren't comparable. Not enforced beyond this default,
@@ -215,6 +225,7 @@ class RollDetector:
             blur_kernel=blur_kernel,
             motion=motion,
             active_colors=active_colors,
+            validity_enabled=validity_cfg.get("enabled", True),
             **kwargs,
         )
 
@@ -312,13 +323,17 @@ class RollDetector:
         )
 
         signature = frame_signature(rectified, self.downscale_size, self.blur_kernel)
-        if self._last_confirmed_signature is None:
-            is_new_frame = True
-            ratio = None
+        if not self._validity_enabled:
+            # Escape hatch: skip both checks below, any stable reading
+            # confirms immediately -- see __init__'s _validity_enabled comment.
+            ratio, is_new_frame, pieces_untouched = None, True, True
+        elif self._last_confirmed_signature is None:
+            ratio, is_new_frame = None, True
+            pieces_untouched = _pieces_match(pieces, expected_pieces, self._active_colors)
         else:
             ratio = changed_ratio(signature, self._last_confirmed_signature, self.pixel_diff_threshold)
             is_new_frame = ratio > self.pixel_diff_area_ratio
-        pieces_untouched = _pieces_match(pieces, expected_pieces, self._active_colors)
+            pieces_untouched = _pieces_match(pieces, expected_pieces, self._active_colors)
 
         logger.debug(
             "_confirm: candidate die=%d (confidence=%.3f) -- is_new_frame=%s "

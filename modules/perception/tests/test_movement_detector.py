@@ -176,6 +176,43 @@ def test_dice_changed_invalidates_the_move():
     assert result is None
 
 
+def test_dice_changed_confirms_anyway_when_validity_disabled():
+    # Same setup as test_dice_changed_invalidates_the_move, but with the
+    # escape hatch on: a dice mismatch shouldn't block confirmation.
+    stable_reading = [_piece_detection(), _dice_detection()]  # dice reads as value 3
+    detector = _movement_detector(
+        frames=[stable_reading, stable_reading, stable_reading], validity_enabled=False
+    )
+
+    detector.step(_frame(50), Color.RED, expected_dice=5)  # a different roll than what settled
+    detector.step(_frame(220), Color.RED, expected_dice=5)
+    detector.step(_frame(220), Color.RED, expected_dice=5)
+    result = detector.step(_frame(220), Color.RED, expected_dice=5)
+
+    assert result is not None
+    assert result.board_state.dice == 3
+
+
+def test_repeated_confirmed_frame_confirms_anyway_when_validity_disabled():
+    # Same setup as test_repeating_the_exact_previous_confirmed_frame_is_invalid,
+    # but with the escape hatch on: a pixel-identical repeat of the last
+    # confirmed frame shouldn't block confirmation either.
+    stable_reading = [_piece_detection(), _dice_detection()]
+    detector = _movement_detector(frames=[stable_reading] * 6, validity_enabled=False)
+
+    detector.step(_frame(50), Color.RED, expected_dice=3)
+    detector.step(_frame(220), Color.RED, expected_dice=3)
+    detector.step(_frame(220), Color.RED, expected_dice=3)
+    first = detector.step(_frame(220), Color.RED, expected_dice=3)
+    assert first is not None
+
+    detector.step(_frame(60), Color.RED, expected_dice=3)
+    detector.step(_frame(220), Color.RED, expected_dice=3)
+    detector.step(_frame(220), Color.RED, expected_dice=3)
+    second = detector.step(_frame(220), Color.RED, expected_dice=3)
+    assert second is not None
+
+
 def test_an_invalid_confirm_retries_before_giving_up():
     # The first _confirm attempt sees a dice mismatch (Invalid); the very
     # next frame's expected_dice reflects the caller catching up -- with

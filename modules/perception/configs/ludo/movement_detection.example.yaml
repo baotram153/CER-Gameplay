@@ -27,6 +27,11 @@ stability:
   min_confidence: 0.6
 
 validity:
+  # If false, skips both checks below entirely -- any stable reading
+  # confirms as a new move immediately. Same escape hatch as
+  # roll_detection.example.yaml's identical validity.enabled -- see that
+  # file's comment for the rationale/tradeoff.
+  enabled: true
   # The settled frame must differ from the previous CONFIRMED move's
   # frame by more than this pixel threshold/area ratio to count as a
   # genuinely new move rather than a stale re-read of the same physical

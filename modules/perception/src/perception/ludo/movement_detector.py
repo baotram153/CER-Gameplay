@@ -102,6 +102,7 @@ class MovementDetector:
         blur_kernel: tuple[int, int] = DEFAULT_BLUR_KERNEL,
         motion: MotionDetector | None = None,
         rectify: RectifyFn = rectify_keep_frame,
+        validity_enabled: bool = True,
     ) -> None:
         self.detector = detector
         self.board_config = board_config
@@ -115,6 +116,10 @@ class MovementDetector:
         self.pixel_diff_threshold = pixel_diff_threshold
         self.pixel_diff_area_ratio = pixel_diff_area_ratio
         self.max_confirm_attempts = max_confirm_attempts
+        # Skips both checks below entirely when False -- any stable
+        # reading confirms immediately. See RollDetector's identical
+        # _validity_enabled comment for the rationale/tradeoff.
+        self._validity_enabled = validity_enabled
         self.downscale_size = downscale_size
         self.blur_kernel = blur_kernel
         self.motion = motion or MotionDetector(downscale_size=downscale_size, blur_kernel=blur_kernel)
@@ -173,6 +178,7 @@ class MovementDetector:
             downscale_size=downscale_size,
             blur_kernel=blur_kernel,
             motion=motion,
+            validity_enabled=validity_cfg.get("enabled", True),
             **kwargs,
         )
 
@@ -242,13 +248,18 @@ class MovementDetector:
             dice_value, dice_detection = None, None
 
         signature = frame_signature(rectified, self.downscale_size, self.blur_kernel)
-        if self._last_confirmed_signature is None:
+        if not self._validity_enabled:
+            # Escape hatch: skip both checks below, any stable reading
+            # confirms immediately -- see __init__'s _validity_enabled comment.
+            ratio, is_new_frame, dice_unchanged = None, True, True
+        elif self._last_confirmed_signature is None:
             is_new_frame = True
             ratio = None
+            dice_unchanged = dice_value == expected_dice
         else:
             ratio = changed_ratio(signature, self._last_confirmed_signature, self.pixel_diff_threshold)
             is_new_frame = ratio > self.pixel_diff_area_ratio
-        dice_unchanged = dice_value == expected_dice
+            dice_unchanged = dice_value == expected_dice
 
         logger.debug(
             "_confirm: candidate move (confidence=%.3f, dice=%s) -- is_new_frame=%s "

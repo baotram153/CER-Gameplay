@@ -38,6 +38,14 @@ stability:
   min_confidence: 0.6
 
 validity:
+  # If false, skips both checks below entirely -- any stable reading
+  # confirms as a new roll immediately. An escape hatch if this check
+  # itself (not the motion/stability gating before it) is what's costing
+  # turnaround time, e.g. a noisy camera repeatedly tripping the
+  # pieces-moved check on a roll that's actually fine. Loses this check's
+  # protection against a stale/repeated reading and against mistaking an
+  # actual move for a roll -- see RollDetector's module docstring.
+  enabled: true
   # Confirm valid dice result phase: the settled frame must differ from
   # the previous CONFIRMED roll's frame by more than this pixel
   # threshold/area ratio (same meaning as motion.* above) to count as a
