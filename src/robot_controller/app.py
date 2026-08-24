@@ -38,6 +38,7 @@ from .detection_recorder import DetectionResultRecorder
 from .errors import CameraError
 from .logging_context import set_current_turn
 from .snapshot_saver import SnapshotSaver
+from .stall_capture import StallImageLogger
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +153,12 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
         ).rectify_keep_frame,
     )
 
+    stall_image_logger = (
+        StallImageLogger(config.stall_capture.output_dir, config.stall_capture.interval_s)
+        if config.stall_capture.enabled
+        else None
+    )
+
     perception = LudoPerceptionAdapter(
         camera=camera,
         pipeline=pipeline,
@@ -162,6 +169,7 @@ def build_engine(config: AppConfig, camera: FrameSource, debug_window: DebugWind
         snapshot_saver=snapshot_saver,
         detection_recorder=detection_recorder,
         debug_window=debug_window,
+        stall_image_logger=stall_image_logger,
         rotate_frame_180=config.perception.rotate_frame_180,
     )
     manipulation = ConsoleManipulationAdapter(require_confirmation=config.manipulation.require_confirmation)

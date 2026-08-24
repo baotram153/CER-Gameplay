@@ -101,6 +101,19 @@ class DetectionRecordingConfig:
 
 
 @dataclass(frozen=True)
+class StallCaptureConfig:
+    # Dev tool: automatically (no console key needed) save the current raw
+    # + annotated frame to output_dir every interval_s seconds while
+    # capture()/capture_roll()/capture_movement() are being called -- see
+    # src/robot_controller/stall_capture.py. Meant for diagnosing a run
+    # that got stuck in a Wait-for-... phase without a live debug window
+    # attached at the time. Off by default.
+    enabled: bool
+    interval_s: float
+    output_dir: Path
+
+
+@dataclass(frozen=True)
 class LoggingConfig:
     level: str
     log_dir: Path
@@ -148,6 +161,7 @@ class AppConfig:
     runtime: RuntimeConfig
     snapshot: SnapshotConfig
     detection_recording: DetectionRecordingConfig
+    stall_capture: StallCaptureConfig
     # Opens a live window (see debug_window.py) showing the raw camera feed
     # next to perception's latest annotated view. Also settable with
     # `--debug` on the command line (main.py), which forces this on
@@ -206,6 +220,7 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
     runtime_raw = raw.get("runtime", {})
     snapshot_raw = raw.get("snapshot", {})
     detection_recording_raw = raw.get("detection_recording", {})
+    stall_capture_raw = raw.get("stall_capture", {})
     debug_window_raw = raw.get("debug_window", {})
 
     game = GameConfig(
@@ -289,6 +304,12 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
                 f"snapshot.key/detection_recording.start_key/stop_key must all differ, got {keys}"
             )
 
+    stall_capture = StallCaptureConfig(
+        enabled=stall_capture_raw.get("enabled", False),
+        interval_s=stall_capture_raw.get("interval_s", 2.0),
+        output_dir=_resolve_path(stall_capture_raw.get("output_dir", "stall_captures")),
+    )
+
     debug_window = DebugWindowConfig(
         max_width=debug_window_raw.get("max_width", 960),
         min_interval_s=debug_window_raw.get("min_interval_s", 0.2),
@@ -303,6 +324,7 @@ def _build_config(raw: dict, base_dir: Path) -> AppConfig:
         runtime=runtime,
         snapshot=snapshot,
         detection_recording=detection_recording,
+        stall_capture=stall_capture,
         debug=bool(raw.get("debug", False)),
         debug_window=debug_window,
     )

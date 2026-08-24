@@ -106,6 +106,18 @@ detection_recording:
   interval_s: 1.0
   output_dir: detections
 
+stall_capture:
+  # Dev tool: automatically (no console key needed) save the current raw
+  # + annotated frame to output_dir every interval_s seconds while
+  # capture()/capture_roll()/capture_movement() are running -- see
+  # src/robot_controller/stall_capture.py. Meant for diagnosing a run that
+  # got stuck in a Wait-for-... phase (see runtime.stuck_warning_attempts
+  # below) without a live debug window attached at the time, e.g. a
+  # headless/SSH run. Off by default.
+  enabled: false
+  interval_s: 2.0
+  output_dir: stall_captures
+
 # Opens a live window (see src/robot_controller/debug_window.py) showing
 # the raw RealSense/camera feed next to perception's latest annotated
 # (rectified + detected cells/pieces/dice) view. Needs a GUI-capable

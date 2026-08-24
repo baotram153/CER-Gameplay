@@ -496,3 +496,56 @@ def test_capture_does_not_show_the_debug_window_when_no_frame_is_available():
     adapter.capture(Color.GREEN)
 
     assert window.calls == []
+
+
+class _FakeStallImageLogger:
+    def __init__(self):
+        self.calls = []
+
+    def maybe_save(self, kind, raw_frame, annotated_frame):
+        self.calls.append((kind, raw_frame, annotated_frame))
+
+
+def test_capture_movement_feeds_the_stall_image_logger_even_while_unconfirmed():
+    stall_logger = _FakeStallImageLogger()
+    frame = _frame()
+    rectified = _frame()
+    movement_detector = _FakeMovementDetector(result=None, last_rectified=rectified)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame),
+        pipeline=_FakePipeline(),
+        movement_detector=movement_detector,
+        stall_image_logger=stall_logger,
+    )
+
+    adapter.capture_movement(Color.GREEN, _EXPECTED_DICE)
+
+    assert stall_logger.calls == [("movement", frame, rectified)]
+
+
+def test_capture_roll_feeds_the_stall_image_logger():
+    stall_logger = _FakeStallImageLogger()
+    frame = _frame()
+    visualization = _frame()
+    roll_detector = _FakeRollDetector(result=None, last_visualization=visualization)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame),
+        pipeline=_FakePipeline(),
+        roll_detector=roll_detector,
+        stall_image_logger=stall_logger,
+    )
+
+    adapter.capture_roll(Color.GREEN, _EXPECTED_PIECES)
+
+    assert stall_logger.calls == [("roll", frame, visualization)]
+
+
+def test_capture_does_not_feed_the_stall_image_logger_when_not_configured():
+    frame = _frame()
+    movement_detector = _FakeMovementDetector(result=None)
+    adapter = LudoPerceptionAdapter(
+        camera=_FakeCamera(frame=frame), pipeline=_FakePipeline(), movement_detector=movement_detector
+    )
+
+    # No stall_image_logger wired in -- this should simply not crash.
+    adapter.capture_movement(Color.GREEN, _EXPECTED_DICE)

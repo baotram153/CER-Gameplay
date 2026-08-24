@@ -17,8 +17,12 @@ stays sub-millisecond even at full camera resolution.
 """
 from __future__ import annotations
 
+import logging
+
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # Defaults, overridable per-call/per-instance -- the actually-deployed
 # values live in configs/ludo/roll_detection.yaml (see RollDetector.from_config),
@@ -100,7 +104,12 @@ class MotionDetector:
             self._background = signature
             return False
 
-        is_motion = changed_ratio(signature, self._background, self.pixel_threshold) > self.area_ratio
+        ratio = changed_ratio(signature, self._background, self.pixel_threshold)
+        is_motion = ratio > self.area_ratio
+        logger.debug(
+            "detect: changed_ratio=%.4f (threshold=%.4f) -- %s",
+            ratio, self.area_ratio, "motion" if is_motion else "no motion",
+        )
         if not is_motion:
             cv2.accumulateWeighted(signature, self._background, self.background_alpha)
         return is_motion

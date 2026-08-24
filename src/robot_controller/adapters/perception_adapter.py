@@ -20,6 +20,7 @@ from ..debug_window import DebugWindow
 from ..detection_recorder import DetectionResultRecorder
 from ..errors import CameraError
 from ..snapshot_saver import SnapshotSaver
+from ..stall_capture import StallImageLogger
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,12 @@ class LudoPerceptionAdapter:
     RealSenseCamera's reconnect logic), which the composition root's run
     loop needs to see and react to, not silently retry forever.
 
-    `key_dispatcher`/`snapshot_saver`/`detection_recorder`/`debug_window`
-    are optional dev-tool hooks (see console_keys.py, snapshot_saver.py,
-    detection_recorder.py, debug_window.py) -- polled/fed once per
-    capture() call so they stay in step with the camera regardless of
-    which gameplay phase is driving capture() right now.
+    `key_dispatcher`/`snapshot_saver`/`detection_recorder`/`debug_window`/
+    `stall_image_logger` are optional dev-tool hooks (see console_keys.py,
+    snapshot_saver.py, detection_recorder.py, debug_window.py,
+    stall_capture.py) -- polled/fed once per capture() call so they stay
+    in step with the camera regardless of which gameplay phase is driving
+    capture() right now.
     """
 
     def __init__(
@@ -64,6 +66,7 @@ class LudoPerceptionAdapter:
         snapshot_saver: SnapshotSaver | None = None,
         detection_recorder: DetectionResultRecorder | None = None,
         debug_window: DebugWindow | None = None,
+        stall_image_logger: StallImageLogger | None = None,
         rotate_frame_180: bool = False
     ) -> None:
         self._camera = camera
@@ -75,6 +78,7 @@ class LudoPerceptionAdapter:
         self._snapshot_saver = snapshot_saver
         self._detection_recorder = detection_recorder
         self._debug_window = debug_window
+        self._stall_image_logger = stall_image_logger
         self._frame_count = 0
         self._rotate_frame_180 = rotate_frame_180
 
@@ -248,27 +252,36 @@ class LudoPerceptionAdapter:
         return snapshot.board_state
 
     def _show_debug_roll(self, raw_frame: np.ndarray) -> None:
-        if self._debug_window is None:
+        if self._debug_window is None and self._stall_image_logger is None:
             return
         assert self._roll_detector is not None
         annotated = self._roll_detector.last_visualization
         if annotated is None:
             annotated = self._roll_detector.last_rectified
-        self._debug_window.show(raw_frame, annotated)
+        if self._stall_image_logger is not None:
+            self._stall_image_logger.maybe_save("roll", raw_frame, annotated)
+        if self._debug_window is not None:
+            self._debug_window.show(raw_frame, annotated)
 
     def _show_debug_movement(self, raw_frame: np.ndarray) -> None:
-        if self._debug_window is None:
+        if self._debug_window is None and self._stall_image_logger is None:
             return
         assert self._movement_detector is not None
         annotated = self._movement_detector.last_visualization
         if annotated is None:
             annotated = self._movement_detector.last_rectified
-        self._debug_window.show(raw_frame, annotated)
+        if self._stall_image_logger is not None:
+            self._stall_image_logger.maybe_save("movement", raw_frame, annotated)
+        if self._debug_window is not None:
+            self._debug_window.show(raw_frame, annotated)
 
     def _show_debug(self, raw_frame: np.ndarray) -> None:
-        if self._debug_window is None:
+        if self._debug_window is None and self._stall_image_logger is None:
             return
         annotated = self._pipeline.last_visualization
         if annotated is None:
             annotated = self._pipeline.last_rectified
-        self._debug_window.show(raw_frame, annotated)
+        if self._stall_image_logger is not None:
+            self._stall_image_logger.maybe_save("capture", raw_frame, annotated)
+        if self._debug_window is not None:
+            self._debug_window.show(raw_frame, annotated)
