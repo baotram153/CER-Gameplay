@@ -8,6 +8,11 @@
 # markers of its own, so rectification crops vertically to the board markers
 # while preserving the raw frame's aspect ratio and horizontal context for
 # the bowl (perception.rectification.rectify_keep_frame).
+#
+# This `model` section only applies when dice_reading.method is "model"
+# (the default) -- see dice_reading below for the alternative, where
+# pieces and dice come from two entirely separate models instead
+# (pieces_model + dice_reading.bowl_classifier.classifier).
 
 model:
   weights: models/best.pt
@@ -48,41 +53,83 @@ model:
 
 board_config: ../common/configs/ludo/board.yaml
 
+pieces_model:
+  # Only used when dice_reading.method is "bowl_classifier" -- a pose
+  # checkpoint fine-tuned on pieces alone (no dice_<1-6> classes at all),
+  # used in place of `model` above for piece detection whenever dice
+  # reading doesn't come from that same combined checkpoint. Same schema
+  # as `model`; train it the same way (Auto-Labeling, a sibling repo),
+  # just against a piece-only class set. Ignored entirely when
+  # dice_reading.method is "model".
+  weights: models/pieces_only.pt
+  fallback_weights: null
+  conf_threshold: 0.4
+  iou_threshold: 0.5
+  device: null
+  use_npu: false
+  npu_weights: models/pieces_only.int8.onnx
+  num_keypoints: 2
+  qnn_backend_path: libQnnHtp.so
+  class_names:
+    0: piece_red
+    1: piece_green
+    2: piece_yellow
+    3: piece_blue
+
 dice_reading:
-  # "model" (default): the die is just one more of the checkpoint's own
-  # classes (dice_<1-6> above) -- free, since piece detection already ran
-  # this same inference pass. "pip_counting": classical CV instead --
-  # crops a fixed ROI and counts pips via adaptive thresholding + contour
-  # filtering, ignoring the model's dice_<1-6> classes entirely. Useful as
-  # a fallback/cross-check if the model's dice classes turn out unreliable
+  # "model" (default): the die is just one more of the combined
+  # checkpoint's own classes (dice_<1-6> above) -- free, since piece
+  # detection already ran this same inference pass. "bowl_classifier":
+  # classical CV to find the ROI, a model to read it -- locates the dice
+  # bowl itself each frame (Hough Circle Transform against its rim) and
+  # hands that crop to a separate, dedicated dice-classification
+  # checkpoint, ignoring the combined model's dice_<1-6> classes entirely
   # -- see perception.ludo.dice_reader for both implementations. Applies
   # everywhere a die gets read (LudoStatePipeline.run, RollDetector,
   # MovementDetector -- see robot_controller.app.build_engine, which wires
-  # this same LudoStatePipeline.dice_reader instance through to all three).
+  # this same LudoStatePipeline.dice_reader instance through to all
+  # three). Switching to "bowl_classifier" also switches piece detection
+  # over to the separate `pieces_model` above, instead of the combined
+  # checkpoint `model` describes.
   method: model
-  pip_counting:
-    # (x, y, w, h) in pixels, in the RECTIFIED frame's coordinate space --
-    # i.e. after perception.rectification.rectify_keep_frame, which keeps
-    # horizontal context beside the board (the dice bowl) rather than
-    # cropping to just the board itself. Re-measure this whenever the
-    # camera or board physically moves; log perception.ludo.dice_reader at
-    # DEBUG and check pip counts/confidence against a few known rolls
-    # before trusting a new ROI.
-    roi: [1041, 285, 410, 460]
-    # Gaussian-weighted adaptive-threshold window (must be odd) and
-    # constant subtracted from it -- see cv2.adaptiveThreshold. Bigger
-    # block_size copes with a more gradual lighting falloff across the
-    # bowl; bigger c makes the threshold stricter (fewer, darker pixels
-    # count as "pip").
-    block_size: 51
-    c: 10
-    # Contour area (px^2, in the ROI's own resolution) a blob must fall
-    # within to be considered a pip candidate at all -- filters out both
-    # single-pixel noise and the die's own edge/face-boundary contours.
-    min_pip_area: 30.0
-    max_pip_area: 2000.0
-    # 4*pi*area/perimeter^2 -- 1.0 for a perfect circle. A real pip is
-    # close to circular; this rejects elongated/irregular contours (a
-    # shadow, glare, or two touching pips merged into one blob) that
-    # happened to fall in the area range above.
-    min_circularity: 0.6
+  bowl_classifier:
+    # Rather than assuming a fixed pixel crop, this locates the dice
+    # bowl's own circular rim each frame via Hough Circle Transform -- the
+    # bowl is a separate physical object from the board and can be
+    # repositioned independently of it, so a fixed crop drifts out of
+    # alignment the moment either one moves (confirmed against real
+    # footage: a fixed ROI missed the bowl in roughly half of a 93-image
+    # test set spanning two camera setups). bowl_min_radius/bowl_max_radius
+    # are the bowl's expected pixel size -- camera-distance-dependent,
+    # recalibrate for a different setup. Validated: the strongest Hough
+    # candidate was the correct bowl in all 93 test images, 0 misses.
+    bowl_min_radius: 100
+    bowl_max_radius: 200
+    # Optional (x, y, w, h) to restrict the bowl search to, for speed or to
+    # avoid an unrelated circular object elsewhere in frame. null = search
+    # the whole rectified frame, which was sufficient in testing.
+    search_region: null
+    # How much bigger than the bowl's own diameter to crop around it --
+    # needs enough margin that an off-center die is never clipped.
+    bowl_crop_scale: 1.7
+    # Reject a classification below this confidence rather than trusting
+    # it -- 0.0 trusts the classifier's top1 unconditionally.
+    min_confidence: 0.5
+
+    classifier:
+      # A YOLO classification checkpoint (not a detector/pose model),
+      # fine-tuned to read a die's face value from exactly the kind of
+      # bowl crop bowl_crop_scale above produces -- see Auto-Labeling (a
+      # sibling repo) for how it's trained.
+      weights: models/dice_classifier.pt
+      fallback_weights: null
+      device: null
+      # Classifier class id -> "dice_<1-6>", exactly as baked into the
+      # checkpoint at training time.
+      class_names:
+        0: dice_1
+        1: dice_2
+        2: dice_3
+        3: dice_4
+        4: dice_5
+        5: dice_6

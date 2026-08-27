@@ -1,7 +1,7 @@
 """Ludo (cờ cá ngựa) board-state detection: rectified image -> LudoBoardSnapshot."""
 from .detector import LudoDetector
 from .dice import pick_dice_value
-from .dice_reader import DiceReader, ModelDiceReader, PipCountingDiceReader, build_dice_reader
+from .dice_reader import BowlClassifierDiceReader, DiceClassifier, DiceReader, ModelDiceReader, build_dice_reader
 from .models import DiceObservation, Keypoints, LudoBoardSnapshot, PieceObservation
 from .motion import MotionDetector
 from .movement_detector import MovementDetector
@@ -15,7 +15,8 @@ __all__ = [
     "pick_dice_value",
     "DiceReader",
     "ModelDiceReader",
-    "PipCountingDiceReader",
+    "BowlClassifierDiceReader",
+    "DiceClassifier",
     "build_dice_reader",
     "DiceObservation",
     "Keypoints",

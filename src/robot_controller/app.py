@@ -68,6 +68,20 @@ def _load_ludo_pipeline(inference_config_path: Path) -> LudoStatePipeline:
     raw["model"]["weights"] = _resolve_relative_to_perception(raw["model"]["weights"])
     raw["model"]["fallback_weights"] = _resolve_relative_to_perception(raw["model"].get("fallback_weights"))
     raw["model"]["npu_weights"] = _resolve_relative_to_perception(raw["model"].get("npu_weights"))
+
+    # Only present when dice_reading.method is "bowl_classifier" -- see
+    # LudoStatePipeline.__init__ and inference.example.yaml's pieces_model/
+    # dice_reading.bowl_classifier.classifier sections.
+    pieces_model = raw.get("pieces_model")
+    if pieces_model is not None:
+        pieces_model["weights"] = _resolve_relative_to_perception(pieces_model["weights"])
+        pieces_model["fallback_weights"] = _resolve_relative_to_perception(pieces_model.get("fallback_weights"))
+        pieces_model["npu_weights"] = _resolve_relative_to_perception(pieces_model.get("npu_weights"))
+    classifier = raw.get("dice_reading", {}).get("bowl_classifier", {}).get("classifier")
+    if classifier is not None:
+        classifier["weights"] = _resolve_relative_to_perception(classifier["weights"])
+        classifier["fallback_weights"] = _resolve_relative_to_perception(classifier.get("fallback_weights"))
+
     return LudoStatePipeline(raw)
 
 

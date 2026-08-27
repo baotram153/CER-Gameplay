@@ -114,9 +114,10 @@ class RollDetector:
         self.detector = detector
         # Defaults to reading the die off `detector`'s own dice_<1-6>
         # classes (today's only behavior) -- pass a
-        # dice_reader.PipCountingDiceReader instead for the classical-CV
-        # ROI+pip-counting alternative. See dice_reader.build_dice_reader
-        # for the config-driven choice robot_controller.app wires up.
+        # dice_reader.BowlClassifierDiceReader instead for the classical-CV
+        # bowl-ROI + dice-classifier-model alternative. See
+        # dice_reader.build_dice_reader for the config-driven choice
+        # robot_controller.app wires up.
         self._dice_reader = dice_reader or ModelDiceReader(detector)
         self.board_config = board_config
         self.entry_offsets = entry_offsets

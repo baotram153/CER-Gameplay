@@ -26,33 +26,49 @@ from .visualize import build_boxes_image
 logger = logging.getLogger(__name__)
 
 
+def _build_ludo_detector(cfg: dict) -> LudoDetector:
+    """Builds a LudoDetector from a "model"- or "pieces_model"-shaped
+    config section -- both share the same schema, just different weights/
+    class_names (see inference.example.yaml)."""
+    return LudoDetector(
+        weights=cfg["weights"],
+        fallback_weights=cfg["fallback_weights"],
+        conf_threshold=cfg["conf_threshold"],
+        iou_threshold=cfg["iou_threshold"],
+        device=cfg["device"],
+        class_names=cfg["class_names"],
+        use_npu=cfg.get("use_npu", False),
+        npu_weights=cfg.get("npu_weights"),
+        num_keypoints=cfg.get("num_keypoints", 2),
+        qnn_backend_path=cfg.get("qnn_backend_path"),
+    )
+
+
 class LudoStatePipeline:
     def __init__(self, inference_config: dict) -> None:
         board_config_path = Path(inference_config["board_config"])
         self.board_config = yaml.safe_load(board_config_path.read_text())
 
-        model_cfg = inference_config["model"]
-        self.detector = LudoDetector(
-            weights=model_cfg["weights"],
-            fallback_weights=model_cfg["fallback_weights"],
-            conf_threshold=model_cfg["conf_threshold"],
-            iou_threshold=model_cfg["iou_threshold"],
-            device=model_cfg["device"],
-            class_names=model_cfg["class_names"],
-            use_npu=model_cfg.get("use_npu", False),
-            npu_weights=model_cfg.get("npu_weights"),
-            num_keypoints=model_cfg.get("num_keypoints", 2),
-            qnn_backend_path=model_cfg.get("qnn_backend_path"),
-        )
-
-        # "model" (the die is just another one of the checkpoint's own
-        # classes, the default) or "pip_counting" (classical CV against a
-        # fixed ROI) -- see dice_reader.build_dice_reader and this
-        # config's own dice_reading section for the schema. Shared by
-        # every dice-reading call site (this pipeline's own run(), plus
-        # RollDetector/MovementDetector -- see robot_controller.app's
-        # build_engine, which threads this same instance through to both).
-        self.dice_reader = build_dice_reader(inference_config.get("dice_reading", {}), self.detector)
+        # "model" (the default): one combined pawn+dice pose checkpoint
+        # detects both, so `self.detector` below (used for pieces
+        # everywhere -- this pipeline's own run(), plus RollDetector/
+        # MovementDetector) is also what ModelDiceReader reads dice
+        # classes off of. "bowl_classifier": pieces and dice come from two
+        # entirely separate models instead -- a pieces-only pose
+        # checkpoint (inference_config["pieces_model"]) for `self.detector`,
+        # and a dedicated dice-classification checkpoint (dice_reading.
+        # bowl_classifier.classifier) that never sees pieces at all, run
+        # against a classically-located (Hough Circle) bowl crop. See
+        # dice_reader.build_dice_reader and this config's own
+        # dice_reading section for the full schema.
+        dice_reading_cfg = inference_config.get("dice_reading", {})
+        method = dice_reading_cfg.get("method", "model")
+        if method == "model":
+            self.detector = _build_ludo_detector(inference_config["model"])
+            self.dice_reader = build_dice_reader(dice_reading_cfg, self.detector)
+        else:
+            self.detector = _build_ludo_detector(inference_config["pieces_model"])
+            self.dice_reader = build_dice_reader(dice_reading_cfg, detector=None)
 
         # A gameplay session's camera+board are physically fixed, so corner
         # positions barely move between run() calls -- BoardRectifier
